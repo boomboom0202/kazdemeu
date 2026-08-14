@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: kazdemeu-erp
+    runtime: docker
+    plan: free
+    region: frankfurt          # ближайший к Казахстану регион Render
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true    # Render сгенерирует случайный ключ
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: SEED_DEMO
+        value: "1"             # демо-пользователи и данные при старте
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DATABASE_URL
+        sync: false            # строка подключения из Neon — вписать в дашборде
+      - key: ANTHROPIC_API_KEY
+        sync: false            # для ИИ-ассистента, можно оставить пустым
