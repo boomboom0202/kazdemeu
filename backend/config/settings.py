@@ -78,7 +78,9 @@ if os.environ.get("DATABASE_URL"):
     DATABASES["default"] = dj_database_url.config(
         conn_max_age=600,
         conn_health_checks=True,
-        ssl_require=True,
+        # Neon и другие облачные базы требуют TLS. DATABASE_SSL=0 — только
+        # для локальной проверки на postgres в контейнере.
+        ssl_require=os.environ.get("DATABASE_SSL", "1") == "1",
     )
 
 AUTH_USER_MODEL = "accounts.User"

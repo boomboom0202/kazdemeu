@@ -17,3 +17,6 @@ frontend/dist/
 .DS_Store
 *.log
 .env
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
