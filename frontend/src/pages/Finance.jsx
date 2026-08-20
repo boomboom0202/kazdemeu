@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { api, fmt } from '../api'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
+import { useIsMobile } from '../useIsMobile'
 
 const COLORS = ['#2e4a8f', '#d97b29', '#1d7a4f', '#b8860b', '#7a5195', '#b03030']
 
 export default function Finance() {
+  const isMobile = useIsMobile()
   const [cf, setCf] = useState(null)
   const [pnl, setPnl] = useState(null)
   const [forecast, setForecast] = useState(null)
@@ -199,8 +201,8 @@ export default function Finance() {
         </div>
         <div className="card stitch">
           <h2>Структура расходов</h2>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <ResponsiveContainer width="55%" height={230}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+            <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={230}>
               <PieChart>
                 <Pie data={pnl.expenses} dataKey="total" nameKey="category" innerRadius={45} outerRadius={85}>
                   {pnl.expenses.map((e, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}

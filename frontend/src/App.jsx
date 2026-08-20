@@ -16,11 +16,31 @@ import Notifications from './components/Notifications'
 import { can } from './api'
 
 function Layout({ user, onLogout, children }) {
+  // На ширине ≤900px сайдбар превращается в выдвижное меню
+  const [navOpen, setNavOpen] = useState(false)
+  const close = () => setNavOpen(false)
+
+  // Пока меню открыто, фон не должен прокручиваться под ним
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [navOpen])
+
   return (
     <div className="layout">
-      <aside className="sidebar">
+      <header className="topbar">
+        <button className="burger" onClick={() => setNavOpen(o => !o)} aria-label="Меню" aria-expanded={navOpen}>
+          <i />
+        </button>
         <div className="logo">Каз<span>Демеу</span></div>
-        <nav className="nav">
+      </header>
+
+      {navOpen && <div className="nav-overlay" onClick={close} />}
+
+      <aside className={navOpen ? 'sidebar open' : 'sidebar'}>
+        <div className="logo">Каз<span>Демеу</span></div>
+        {/* клик по любому пункту закрывает меню на телефоне */}
+        <nav className="nav" onClick={close}>
           <NavLink to="/">Дашборд</NavLink>
           {can(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
           {can(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
@@ -38,6 +58,7 @@ function Layout({ user, onLogout, children }) {
           <button className="logout" onClick={onLogout}>Выйти</button>
         </div>
       </aside>
+
       <main className="main">
         <Notifications />
         {children}

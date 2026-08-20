@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react'
 import { api, fmt } from '../api'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { CONTRACT_STATUS } from '../api'
+import { useIsMobile } from '../useIsMobile'
 
 export default function Analytics() {
+  const isMobile = useIsMobile()
   const [products, setProducts] = useState([])
   const [cs, setCs] = useState(null)
   const [sv, setSv] = useState(null)
@@ -59,10 +61,10 @@ export default function Analytics() {
       <div className="card stitch">
         <h2>Рейтинг ликвидности (по количеству продаж)</h2>
         <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={products} layout="vertical" margin={{ left: 40 }}>
+          <BarChart data={products} layout="vertical" margin={{ left: isMobile ? 0 : 40 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e3e1d9" />
             <XAxis type="number" fontSize={11} />
-            <YAxis type="category" dataKey="name" width={190} fontSize={12} />
+            <YAxis type="category" dataKey="name" width={isMobile ? 92 : 190} fontSize={isMobile ? 10 : 12} />
             <Tooltip />
             <Bar dataKey="sold_qty" name="Продано, шт" fill="#2e4a8f" radius={[0, 4, 4, 0]} />
           </BarChart>

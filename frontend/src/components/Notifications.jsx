@@ -21,7 +21,7 @@ export default function Notifications() {
         {unread.length > 0 && <span className="notif-dot">{unread.length}</span>}
       </button>
       {open && (
-        <div className="card" style={{ position: 'absolute', top: 36, right: 0, width: 380, zIndex: 20, maxHeight: 420, overflowY: 'auto', padding: 0 }}>
+        <div className="card notif-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
             <b>Уведомления</b>
             <button className="btn small ghost" onClick={() => api.post('/notifications/mark_all_read/').then(load)}>Отметить все прочитанными</button>
