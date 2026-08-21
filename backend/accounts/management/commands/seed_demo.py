@@ -16,21 +16,26 @@ class Command(BaseCommand):
         from finance.models import ExpenseCategory, CashEntry, FixedCost, CostSettings
         from tenders.models import Tender, Platform, OwnCompany
 
-        admin, _ = User.objects.get_or_create(username="admin", defaults=dict(
-            role="admin", is_staff=True, is_superuser=True, first_name="Админ"))
-        admin.set_password("admin12345"); admin.save()
-        manager, _ = User.objects.get_or_create(username="aigerim", defaults=dict(
-            role="manager", first_name="Айгерим"))
-        manager.set_password("demo12345"); manager.save()
-        worker, _ = User.objects.get_or_create(username="bolat", defaults=dict(
-            role="worker", first_name="Болат"))
-        worker.set_password("demo12345"); worker.save()
-        techno, _ = User.objects.get_or_create(username="saule", defaults=dict(
-            role="technologist", first_name="Сауле"))
-        techno.set_password("demo12345"); techno.save()
-        buh, _ = User.objects.get_or_create(username="marat", defaults=dict(
-            role="accountant", first_name="Марат"))
-        buh.set_password("demo12345"); buh.save()
+        def demo_user(username, password, **fields):
+            """Пароль ставится только при создании пользователя.
+
+            Раньше set_password вызывался безусловно, а seed_demo выполняется
+            при каждом старте контейнера — то есть и при деплое, и когда
+            бесплатный Render будит уснувший сервис. Из-за этого смена пароля
+            админа молча откатывалась к демонстрационной.
+            """
+            user, created = User.objects.get_or_create(username=username, defaults=fields)
+            if created:
+                user.set_password(password)
+                user.save()
+            return user
+
+        admin = demo_user("admin", "admin12345",
+                          role="admin", is_staff=True, is_superuser=True, first_name="Админ")
+        manager = demo_user("aigerim", "demo12345", role="manager", first_name="Айгерим")
+        worker = demo_user("bolat", "demo12345", role="worker", first_name="Болат")
+        techno = demo_user("saule", "demo12345", role="technologist", first_name="Сауле")
+        buh = demo_user("marat", "demo12345", role="accountant", first_name="Марат")
 
         ensure_default_stages()
 
