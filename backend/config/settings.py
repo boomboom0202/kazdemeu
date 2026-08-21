@@ -2,7 +2,14 @@ from pathlib import Path
 from datetime import timedelta
 import os
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Локальная разработка читает backend/.env, чтобы не выставлять переменные
+# руками в каждом терминале. Уже заданные переменные окружения приоритетнее,
+# поэтому на Render этот файл ни на что не влияет (его там просто нет).
+load_dotenv(BASE_DIR / ".env")
 # Собранный фронтенд (vite build) — Django отдаёт его сам, одним сервисом
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
 
