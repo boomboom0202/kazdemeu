@@ -1,10 +1,11 @@
 """Аналитика: рейтинг ликвидности, маржа, динамика, статусы договоров, KPI-дашборд."""
+from decimal import Decimal
 from collections import defaultdict
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Sum, Count
-from django.db.models.functions import TruncMonth
+from django.db.models import Sum, Count, F, Value, DecimalField
+from django.db.models.functions import TruncMonth, Coalesce
 from django.utils import timezone
 
 
@@ -112,7 +113,19 @@ def dashboard(request):
     balance = ((CashEntry.objects.filter(direction="in").aggregate(s=Sum("amount"))["s"] or 0)
                - (CashEntry.objects.filter(direction="out").aggregate(s=Sum("amount"))["s"] or 0))
 
-    low_stock = sum(1 for m in Material.objects.all() if m.min_stock and m.stock < m.min_stock)
+    # Material.stock — свойство с отдельным запросом на каждый материал,
+    # поэтому цикл по всем материалам давал N+1. Считаем одним запросом.
+    low_stock = (
+        Material.objects
+        .filter(min_stock__gt=0)
+        .annotate(_stock=Coalesce(
+            Sum("movements__qty"),
+            Value(Decimal("0")),
+            output_field=DecimalField(max_digits=12, decimal_places=3),
+        ))
+        .filter(_stock__lt=F("min_stock"))
+        .count()
+    )
 
     series_rows = (CashEntry.objects.annotate(m=TruncMonth("date"))
                    .values("m", "direction").annotate(t=Sum("amount")).order_by("m"))

@@ -2,7 +2,7 @@ from rest_framework import viewsets, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from django.db.models import Q
+from django.db.models import Q, F
 from .models import User, AuditLog, Notification
 from .serializers import (UserSerializer, UserCreateSerializer,
                           AuditLogSerializer, NotificationSerializer)
@@ -84,22 +84,42 @@ class NotificationViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin,
         from contracts.models import Contract, PaymentScheduleItem
         today = timezone.localdate()
         soon = today + timedelta(days=7)
+
+        # Раньше здесь был get_or_create на каждый договор и платёж — то есть
+        # запрос на строку, и всё это на каждой загрузке страницы. Теперь
+        # собираем нужные уведомления в память, затем один SELECT уже
+        # существующих и один bulk_create недостающих.
+        wanted = []
         for c in Contract.objects.filter(status="in_progress", deadline__isnull=False):
             if c.deadline < today:
-                Notification.objects.get_or_create(
-                    title=f"Срок истёк: договор №{c.number}",
-                    defaults=dict(level="critical",
-                                  message=f"Срок {c.deadline} прошёл.", link=f"/contracts/{c.id}"))
+                wanted.append(Notification(
+                    title=f"Срок истёк: договор №{c.number}", level="critical",
+                    message=f"Срок {c.deadline} прошёл.", link=f"/contracts/{c.id}"))
             elif c.deadline <= soon:
-                Notification.objects.get_or_create(
-                    title=f"Срок близко: договор №{c.number}",
-                    defaults=dict(level="warning",
-                                  message=f"Срок исполнения {c.deadline}.", link=f"/contracts/{c.id}"))
-        for p in PaymentScheduleItem.objects.filter(due_date__lt=today).select_related("contract"):
-            if not p.is_paid:
-                Notification.objects.get_or_create(
-                    title=f"Просрочен платёж по №{p.contract.number}",
-                    defaults=dict(level="warning",
-                                  message=f"Ожидалось {p.amount} до {p.due_date}, оплачено {p.paid_amount}.",
-                                  link=f"/contracts/{p.contract_id}"))
+                wanted.append(Notification(
+                    title=f"Срок близко: договор №{c.number}", level="warning",
+                    message=f"Срок исполнения {c.deadline}.", link=f"/contracts/{c.id}"))
+
+        # is_paid — свойство модели, фильтровать по нему нельзя,
+        # поэтому то же условие выражено через сравнение полей.
+        overdue = (PaymentScheduleItem.objects
+                   .filter(due_date__lt=today, paid_amount__lt=F("amount"))
+                   .select_related("contract"))
+        for p in overdue:
+            wanted.append(Notification(
+                title=f"Просрочен платёж по №{p.contract.number}", level="warning",
+                message=f"Ожидалось {p.amount} до {p.due_date}, оплачено {p.paid_amount}.",
+                link=f"/contracts/{p.contract_id}"))
+
+        if wanted:
+            titles = [n.title for n in wanted]
+            existing = set(Notification.objects.filter(title__in=titles)
+                           .values_list("title", flat=True))
+            fresh, seen = [], set()
+            for n in wanted:
+                if n.title not in existing and n.title not in seen:
+                    seen.add(n.title)
+                    fresh.append(n)
+            if fresh:
+                Notification.objects.bulk_create(fresh)
         return Response({"status": "ok"})

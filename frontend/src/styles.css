@@ -250,3 +250,16 @@ img, svg, video { max-width: 100%; height: auto; }
   th { padding: 7px 8px; font-size: 11px; }
   td { padding: 8px; }
 }
+
+/* Состояния загрузки и ошибки — раньше вместо них был пустой экран */
+.statebox {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 48px 20px; min-height: 220px; text-align: center;
+}
+.spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--indigo);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }

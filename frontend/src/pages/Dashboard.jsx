@@ -1,11 +1,20 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { api, fmt } from '../api'
+import { Loader, LoadError } from '../components/Loader'
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 
 export default function Dashboard() {
   const [d, setD] = useState(null)
-  useEffect(() => { api.get('/analytics/dashboard/').then(r => setD(r.data)) }, [])
-  if (!d) return null
+  const [failed, setFailed] = useState(false)
+
+  const load = useCallback(() => {
+    setFailed(false)
+    api.get('/analytics/dashboard/').then(r => setD(r.data)).catch(() => setFailed(true))
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  if (failed && !d) return <LoadError onRetry={load} />
+  if (!d) return <Loader />
 
   return (
     <div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, fmt } from '../api'
+import { Loader, LoadError } from '../components/Loader'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
 import { useIsMobile } from '../useIsMobile'
 
@@ -10,6 +11,7 @@ export default function Finance() {
   const [cf, setCf] = useState(null)
   const [pnl, setPnl] = useState(null)
   const [forecast, setForecast] = useState(null)
+  const [failed, setFailed] = useState(false)
   const [entries, setEntries] = useState([])
   const [cats, setCats] = useState([])
   const [contracts, setContracts] = useState([])
@@ -44,10 +46,15 @@ export default function Finance() {
   }
 
   const load = () => {
-    api.get('/reports/cashflow/').then(r => setCf(r.data))
-    api.get('/reports/pnl/').then(r => setPnl(r.data))
-    api.get('/reports/forecast/').then(r => setForecast(r.data))
-    api.get('/cash-entries/?page_size=30').then(r => setEntries(r.data.results || []))
+    // Раньше отвалившийся отчёт оставлял состояние null, и страница
+    // отдавала пустой экран без объяснения.
+    setFailed(false)
+    Promise.all([
+      api.get('/reports/cashflow/').then(r => setCf(r.data)),
+      api.get('/reports/pnl/').then(r => setPnl(r.data)),
+      api.get('/reports/forecast/').then(r => setForecast(r.data)),
+      api.get('/cash-entries/?page_size=30').then(r => setEntries(r.data.results || [])),
+    ]).catch(() => setFailed(true))
   }
   const loadCats = () => api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || []))
   useEffect(() => {
@@ -83,7 +90,8 @@ export default function Finance() {
     catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
   }
 
-  if (!cf || !pnl || !forecast) return null
+  if (failed && !(cf && pnl && forecast)) return <LoadError onRetry={load} />
+  if (!cf || !pnl || !forecast) return <Loader />
 
   return (
     <div>

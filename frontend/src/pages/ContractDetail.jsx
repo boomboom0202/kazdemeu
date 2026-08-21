@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, fmt, CONTRACT_STATUS } from '../api'
+import { Loader, LoadError } from '../components/Loader'
 
 const FILE_KINDS = { sketch: 'Эскиз', layout: 'Макет', techcard: 'Техкарта', photo: 'Фото', other: 'Другое' }
 
@@ -13,9 +14,18 @@ export default function ContractDetail() {
   const [pay, setPay] = useState({ due_date: '', amount: '', note: '' })
   const [fileForm, setFileForm] = useState({ kind: 'sketch', title: '', url: '', file: null })
 
-  const load = () => api.get(`/contracts/${id}/`).then(r => setC(r.data))
-  useEffect(load, [id])
-  if (!c) return null
+  const [failed, setFailed] = useState(false)
+
+  const load = () => {
+    setFailed(false)
+    return api.get(`/contracts/${id}/`).then(r => setC(r.data)).catch(() => setFailed(true))
+  }
+  // useEffect(load, [id]) возвращал промис, а React принимает возвращённое
+  // значение за функцию очистки — оборачиваем вызов.
+  useEffect(() => { load() }, [id])
+
+  if (failed && !c) return <LoadError onRetry={load} />
+  if (!c) return <Loader />
 
   const setStatus = async (s) => {
     try { const { data } = await api.post(`/contracts/${id}/set_status/`, { status: s }); setC(data) }

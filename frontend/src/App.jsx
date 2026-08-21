@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
 import { api } from './api'
 import Login from './pages/Login'
@@ -13,6 +13,7 @@ import Chat from './pages/Chat'
 import Admin from './pages/Admin'
 import Tenders from './pages/Tenders'
 import Notifications from './components/Notifications'
+import { Loader, LoadError } from './components/Loader'
 import { can } from './api'
 
 function Layout({ user, onLogout, children }) {
@@ -70,23 +71,39 @@ function Layout({ user, onLogout, children }) {
 export default function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [meFailed, setMeFailed] = useState(false)
   const navigate = useNavigate()
   const authed = !!localStorage.getItem('access')
 
+  // Профиль определяет, какие разделы показывать в меню: пункты скрыты
+  // через can(user, ...). Раньше ошибка этого запроса молча гасилась,
+  // user оставался null, все проверки прав давали false — и приложение
+  // рисовалось с меню из двух пунктов. Теперь сбой виден и его можно
+  // повторить, не перезагружая страницу.
+  const loadMe = useCallback(() => {
+    setLoading(true)
+    setMeFailed(false)
+    api.get('/me/')
+      .then(r => setUser(r.data))
+      .catch(() => setMeFailed(true))
+      .finally(() => setLoading(false))
+  }, [])
+
   useEffect(() => {
     if (!authed) { setLoading(false); return }
-    api.get('/me/').then(r => setUser(r.data)).catch(() => {}).finally(() => setLoading(false))
-  }, [authed])
+    loadMe()
+  }, [authed, loadMe])
 
   const logout = () => { localStorage.clear(); setUser(null); navigate('/login') }
 
-  if (loading) return null
   if (!authed) return (
     <Routes>
       <Route path="/login" element={<Login onLogin={setUser} />} />
       <Route path="*" element={<Navigate to="/login" />} />
     </Routes>
   )
+  if (loading) return <Loader text="Загружаем рабочее место…" />
+  if (meFailed) return <LoadError onRetry={loadMe} text="Не удалось загрузить профиль." />
 
   return (
     <Layout user={user} onLogout={logout}>
