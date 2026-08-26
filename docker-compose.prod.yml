@@ -1,0 +1,67 @@
+# Боевой стек для собственного сервера: база, приложение и Caddy впереди.
+# Caddy сам получает и продлевает сертификат Let's Encrypt для $DOMAIN.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kazdemeu
+      POSTGRES_USER: kazdemeu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kazdemeu -d kazdemeu"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://kazdemeu:${POSTGRES_PASSWORD}@db:5432/kazdemeu
+      # База в соседнем контейнере, наружу трафик не идёт — TLS не нужен
+      DATABASE_SSL: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: ${DOMAIN}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
+      # Том, поэтому загруженные файлы переживают перезапуск
+      DJANGO_MEDIA_ROOT: /app/backend/media
+      SEED_DEMO: "1"
+      WEB_CONCURRENCY: "4"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      PORT: "8000"
+    volumes:
+      - media:/app/backend/media
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:
