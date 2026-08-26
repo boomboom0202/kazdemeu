@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fmt } from '../api'
 import { Loader, LoadError } from '../components/Loader'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
@@ -19,32 +20,6 @@ export default function Finance() {
   const [showCat, setShowCat] = useState(false)
   const [editCatId, setEditCatId] = useState(null)
   const [catForm, setCatForm] = useState({ name: '', kind: 'variable' })
-  const [showFixed, setShowFixed] = useState(false)
-  const [fixed, setFixed] = useState([])
-  const [cs, setCs] = useState(null)
-  const [fxForm, setFxForm] = useState({ name: '', monthly_amount: '', category: '' })
-
-  const loadFixed = () => {
-    api.get('/fixed-costs/?page_size=100').then(r => setFixed(r.data.results || []))
-    api.get('/cost-settings/').then(r => setCs(r.data))
-  }
-  useEffect(() => { if (showFixed) loadFixed() }, [showFixed])
-
-  const addFixed = async () => {
-    try {
-      await api.post('/fixed-costs/', { ...fxForm, category: fxForm.category || null })
-      setFxForm({ name: '', monthly_amount: '', category: '' }); loadFixed()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
-  }
-  const patchFixed = async (id, body) => { await api.patch(`/fixed-costs/${id}/`, body); loadFixed() }
-  const delFixed = async (f) => {
-    if (!confirm(`Удалить постоянный расход «${f.name}»?`)) return
-    await api.delete(`/fixed-costs/${f.id}/`); loadFixed()
-  }
-  const patchCs = async (body) => {
-    const { data } = await api.patch('/cost-settings/', body); setCs(data); loadFixed()
-  }
-
   const load = () => {
     // Раньше отвалившийся отчёт оставлял состояние null, и страница
     // отдавала пустой экран без объяснения.
@@ -98,59 +73,10 @@ export default function Finance() {
       <div className="pagehead">
         <h1>Финансы</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn ghost small" onClick={() => setShowFixed(s => !s)}>
-            {showFixed ? 'Скрыть постоянные расходы' : 'Постоянные расходы'}</button>
+          <Link className="btn ghost small" to="/cost-price">Себестоимость и постоянные расходы</Link>
           <button className="btn ghost small" onClick={() => setShowCat(s => !s)}>+ Категория расхода</button>
         </div>
       </div>
-
-      {showFixed && cs && (
-        <div className="card stitch">
-          <h2>Постоянные расходы — вводятся один раз</h2>
-          <p className="muted">Аренда, оклады АУП, коммуналка вносятся сюда один раз и действуют
-            ежемесячно. Система сама распределяет их в себестоимость каждого изделия.
-            Переменные расходы (материалы, сдельная оплата) вводятся при каждой операции.</p>
-          <div className="formrow">
-            <div><label className="f">Наименование</label><input value={fxForm.name} onChange={e => setFxForm({ ...fxForm, name: e.target.value })} placeholder="Аренда цеха" /></div>
-            <div><label className="f">Сумма в месяц, ₸</label><input type="number" value={fxForm.monthly_amount} onChange={e => setFxForm({ ...fxForm, monthly_amount: e.target.value })} /></div>
-            <div><label className="f">Категория</label>
-              <select value={fxForm.category} onChange={e => setFxForm({ ...fxForm, category: e.target.value })}>
-                <option value="">—</option>{cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
-            <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={addFixed} disabled={!fxForm.name || !fxForm.monthly_amount}>+ Добавить</button></div>
-          </div>
-          <table>
-            <thead><tr><th>Наименование</th><th className="num">₸ / месяц</th><th>Категория</th><th>Действует</th><th /></tr></thead>
-            <tbody>
-              {fixed.map(f => (
-                <tr key={f.id}>
-                  <td>{f.name}</td>
-                  <td className="num"><input type="number" style={{ width: 110 }} defaultValue={f.monthly_amount} onBlur={e => patchFixed(f.id, { monthly_amount: e.target.value || 0 })} /></td>
-                  <td>{f.category_name || '—'}</td>
-                  <td><input type="checkbox" style={{ width: 'auto' }} checked={f.is_active} onChange={e => patchFixed(f.id, { is_active: e.target.checked })} /></td>
-                  <td><button className="btn small ghost" onClick={() => delFixed(f)}>Удл.</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="formrow" style={{ marginTop: 12, borderTop: '1px dashed var(--line)', paddingTop: 12 }}>
-            <div><label className="f">Метод распределения</label>
-              <select value={cs.method} onChange={e => patchCs({ method: e.target.value })}>
-                <option value="per_hour">На нормо-час (точнее)</option>
-                <option value="per_unit">На единицу продукции (проще)</option>
-              </select></div>
-            {cs.method === 'per_hour'
-              ? <div><label className="f">Плановый фонд времени, ч/мес</label>
-                  <input type="number" defaultValue={cs.planned_monthly_hours} onBlur={e => patchCs({ planned_monthly_hours: e.target.value || 1 })} /></div>
-              : <div><label className="f">Плановый выпуск, шт/мес</label>
-                  <input type="number" defaultValue={cs.planned_monthly_units} onBlur={e => patchCs({ planned_monthly_units: e.target.value || 1 })} /></div>}
-            <div style={{ alignSelf: 'flex-end' }}>
-              <div className="muted" style={{ fontSize: 13 }}>Итого постоянных: <b>{fmt(cs.monthly_fixed_total)} ₸/мес</b></div>
-              <div className="muted" style={{ fontSize: 13 }}>Ставка накладных: <b>{fmt(cs.overhead_rate)} ₸</b> / {cs.method === 'per_hour' ? 'час' : 'шт'}</div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showCat && (
         <div className="card stitch">

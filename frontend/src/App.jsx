@@ -8,6 +8,7 @@ import ContractDetail from './pages/ContractDetail'
 import Production from './pages/Production'
 import Warehouse from './pages/Warehouse'
 import Finance from './pages/Finance'
+import CostPrice from './pages/CostPrice'
 import Analytics from './pages/Analytics'
 import Chat from './pages/Chat'
 import Admin from './pages/Admin'
@@ -48,6 +49,7 @@ function Layout({ user, onLogout, children }) {
           {can(user, 'production') && <NavLink to="/production">Производство / Цех</NavLink>}
           {can(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
           {can(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
+          {can(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
           {can(user, 'analytics') && <NavLink to="/analytics">Аналитика</NavLink>}
           <NavLink to="/chat">AI-ассистент</NavLink>
           {user?.role === 'admin' && <NavLink to="/admin">Администрирование</NavLink>}
@@ -115,6 +117,7 @@ export default function App() {
         <Route path="/production" element={<Production user={user} />} />
         <Route path="/warehouse" element={<Warehouse />} />
         <Route path="/finance" element={<Finance />} />
+        <Route path="/cost-price" element={<CostPrice />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />

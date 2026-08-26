@@ -35,6 +35,8 @@ def product_analytics(request):
             "cost_price": round(cost, 2),
             "material_cost": round(float(p.material_cost), 2),
             "labor_cost": float(p.labor_cost),
+            "norm_hours": float(p.norm_hours or 0),
+            "overhead_override": p.overhead_override,
             "overhead_cost": round(float(p.overhead), 2),
             "margin": round(margin, 2),
             "margin_percent": round(p.margin_percent, 1),
