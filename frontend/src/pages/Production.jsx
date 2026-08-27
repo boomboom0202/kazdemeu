@@ -105,6 +105,14 @@ export default function Production({ user }) {
   const delRoute = async (r) => {
     await api.delete(`/product-route/${r.id}/`); openProduct(detail.id)
   }
+  const moveRoute = async (i, dir) => {
+    const list = [...(detail.route || [])]
+    const j = i + dir
+    if (j < 0 || j >= list.length) return
+    const t = list[i]; list[i] = list[j]; list[j] = t
+    await api.post(`/products/${detail.id}/reorder_route/`, { order: list.map(r => r.id) })
+    openProduct(detail.id)
+  }
   const fillRoute = async () => {
     await api.post(`/products/${detail.id}/route_from_default/`); openProduct(detail.id)
   }
@@ -340,7 +348,13 @@ export default function Production({ user }) {
                             <input type="number" step="0.01" style={{ width: 90 }} defaultValue={r.norm_hours}
                               onBlur={e => patchRoute(r.id, { norm_hours: e.target.value || 0 })} />
                           </td>
-                          <td><button className="btn small ghost" onClick={() => delRoute(r)}>✕</button></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <button className="btn small ghost" onClick={() => moveRoute(i, -1)}
+                              disabled={i === 0} title="Выше">↑</button>{' '}
+                            <button className="btn small ghost" onClick={() => moveRoute(i, 1)}
+                              disabled={i === (detail.route || []).length - 1} title="Ниже">↓</button>{' '}
+                            <button className="btn small ghost" onClick={() => delRoute(r)} title="Убрать">✕</button>
+                          </td>
                         </tr>
                       ))}
                       {(detail.route || []).length === 0 && (

@@ -48,6 +48,27 @@ class ProductViewSet(CatalogBase):
             added += created
         return Response(ProductDetailSerializer(product).data)
 
+    @action(detail=True, methods=["post"])
+    def reorder_route(self, request, pk=None):
+        """Переставить этапы маршрута: принимает список id в нужном порядке.
+
+        Перенумеровывается всё разом, одним запросом — иначе при обрыве связи
+        маршрут остался бы с двумя одинаковыми позициями.
+        """
+        product = self.get_object()
+        ids = request.data.get("order") or []
+        rows = {r.id: r for r in product.route.all()}
+        if len(ids) != len(rows) or set(ids) != set(rows):
+            return Response(
+                {"detail": "Нужен список всех этапов маршрута, каждый ровно один раз."},
+                status=400)
+        for position, rid in enumerate(ids):
+            row = rows[rid]
+            if row.position != position:
+                row.position = position
+                row.save(update_fields=["position"])
+        return Response(ProductDetailSerializer(product).data)
+
     @action(detail=True, methods=["get"])
     def bom_check(self, request, pk=None):
         """Хватит ли материалов на qty штук (по умолчанию 1)."""
