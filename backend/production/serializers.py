@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (Product, BOMItem, PriceList, PriceListItem,
-                     ProductionOrder, ProductionStage, StageTemplate)
+                     ProductionOrder, ProductionStage, StageTemplate,
+                     ProductRouteStage)
 
 
 class BOMItemSerializer(serializers.ModelSerializer):
@@ -20,6 +21,18 @@ class StageTemplateSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class ProductRouteStageSerializer(serializers.ModelSerializer):
+    stage_name = serializers.CharField(source="template.name", read_only=True)
+    stage_code = serializers.CharField(source="template.code", read_only=True)
+    # 0 в norm_hours означает «взять из справочника» — отдаём то, что реально применится
+    effective_norm_hours = serializers.DecimalField(max_digits=8, decimal_places=2,
+                                                    read_only=True)
+
+    class Meta:
+        model = ProductRouteStage
+        fields = "__all__"
+
+
 class ProductSerializer(serializers.ModelSerializer):
     material_cost = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     cost_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -35,6 +48,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class ProductDetailSerializer(ProductSerializer):
     bom_items = BOMItemSerializer(many=True, read_only=True)
+    route = ProductRouteStageSerializer(many=True, read_only=True)
     qr = serializers.SerializerMethodField()
 
     def get_qr(self, obj):

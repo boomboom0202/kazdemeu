@@ -12,6 +12,7 @@ export default function Production({ user }) {
   const [tab, setTab] = useState('orders')
   const [form, setForm] = useState({ number: '', product: '', qty: '', contract: '' })
   const [detail, setDetail] = useState(null) // product detail with QR/BOM
+  const [routeForm, setRouteForm] = useState({ template: '', norm_hours: '' })
   const [showProd, setShowProd] = useState(false)
   const [editProdId, setEditProdId] = useState(null)
   const [prodForm, setProdForm] = useState({ name: '', sku: '', base_price: '', labor_cost: '', norm_hours: '', overhead_cost: '', overhead_override: false })
@@ -20,7 +21,8 @@ export default function Production({ user }) {
   const [stageForm, setStageForm] = useState({ code: '', name: '', position: '', default_norm_hours: '' })
 
   const loadStages = () => api.get('/stage-templates/?page_size=100').then(r => setStages(r.data.results || []))
-  useEffect(() => { if (tab === 'stages') loadStages() }, [tab])
+  // справочник нужен и во вкладке изделий — для выпадающего списка маршрута
+  useEffect(() => { loadStages() }, [])
 
   const saveStage = async () => {
     try {
@@ -89,6 +91,24 @@ export default function Production({ user }) {
       openProduct(detail.id); load()
     } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
   }
+  const addRoute = async () => {
+    const next = (detail.route || []).length
+    try {
+      await api.post('/product-route/', {
+        product: detail.id, template: routeForm.template,
+        position: next, norm_hours: routeForm.norm_hours || 0,
+      })
+      setRouteForm({ template: '', norm_hours: '' }); openProduct(detail.id)
+    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+  }
+  const patchRoute = async (id, body) => { await api.patch(`/product-route/${id}/`, body); openProduct(detail.id) }
+  const delRoute = async (r) => {
+    await api.delete(`/product-route/${r.id}/`); openProduct(detail.id)
+  }
+  const fillRoute = async () => {
+    await api.post(`/products/${detail.id}/route_from_default/`); openProduct(detail.id)
+  }
+
   const deleteBom = async (bid) => {
     if (!confirm('Убрать материал из состава?')) return
     try { await api.delete(`/bom-items/${bid}/`); openProduct(detail.id); load() }
@@ -304,6 +324,47 @@ export default function Production({ user }) {
                       </select></div>
                     <div><label className="f">Норма на 1 шт.</label><input type="number" step="0.001" value={bomForm.qty} onChange={e => setBomForm({ ...bomForm, qty: e.target.value })} /></div>
                     <div style={{ alignSelf: 'flex-end' }}><button className="btn small" onClick={addBom} disabled={!bomForm.material || !bomForm.qty}>+ В состав</button></div>
+                  </div>
+
+                  <h2 style={{ marginTop: 18 }}>Маршрут по цеху</h2>
+                  <p className="muted">Через какие этапы проходит именно это изделие. Пока маршрут
+                    пуст, заказы собираются по общему справочнику — одинаково для всех изделий.</p>
+                  <table>
+                    <thead><tr><th>#</th><th>Этап</th><th className="num">Норма, ч</th><th /></tr></thead>
+                    <tbody>
+                      {(detail.route || []).map((r, i) => (
+                        <tr key={r.id}>
+                          <td className="num">{i + 1}</td>
+                          <td>{r.stage_name}</td>
+                          <td className="num">
+                            <input type="number" step="0.01" style={{ width: 90 }} defaultValue={r.norm_hours}
+                              onBlur={e => patchRoute(r.id, { norm_hours: e.target.value || 0 })} />
+                          </td>
+                          <td><button className="btn small ghost" onClick={() => delRoute(r)}>✕</button></td>
+                        </tr>
+                      ))}
+                      {(detail.route || []).length === 0 && (
+                        <tr><td colSpan={4} className="muted">
+                          Своего маршрута нет — используется общий справочник этапов.
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="formrow" style={{ marginTop: 10 }}>
+                    <div><label className="f">Добавить этап</label>
+                      <select value={routeForm.template} onChange={e => setRouteForm({ ...routeForm, template: e.target.value })}>
+                        <option value="">—</option>
+                        {stages.filter(st => !(detail.route || []).some(r => r.template === st.id))
+                               .map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
+                      </select></div>
+                    <div><label className="f">Норма, ч</label>
+                      <input type="number" step="0.01" value={routeForm.norm_hours}
+                        onChange={e => setRouteForm({ ...routeForm, norm_hours: e.target.value })} placeholder="0" /></div>
+                    <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
+                      <button className="btn small" onClick={addRoute} disabled={!routeForm.template}>+ В маршрут</button>
+                      {(detail.route || []).length === 0 &&
+                        <button className="btn small ghost" onClick={fillRoute}>Взять стандартный</button>}
+                    </div>
                   </div>
                 </div>
               ) : <div className="card muted">Выберите изделие — откроются BOM, себестоимость и QR-код.</div>}

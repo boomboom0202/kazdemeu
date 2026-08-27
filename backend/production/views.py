@@ -5,11 +5,12 @@ from django.utils import timezone
 from accounts.permissions import RoleSectionPermission
 from accounts.mixins import SafeDestroyMixin
 from .models import (Product, BOMItem, PriceList, PriceListItem,
-                     ProductionOrder, ProductionStage, StageTemplate)
+                     ProductionOrder, ProductionStage, StageTemplate,
+                     ProductRouteStage, ensure_default_stages)
 from .serializers import (ProductSerializer, ProductDetailSerializer, BOMItemSerializer,
                           PriceListSerializer, PriceListItemSerializer,
                           ProductionOrderSerializer, ProductionStageSerializer,
-                          StageTemplateSerializer)
+                          StageTemplateSerializer, ProductRouteStageSerializer)
 
 
 class CatalogBase(SafeDestroyMixin, viewsets.ModelViewSet):
@@ -28,6 +29,24 @@ class ProductViewSet(CatalogBase):
 
     def get_serializer_class(self):
         return ProductDetailSerializer if self.action == "retrieve" else ProductSerializer
+
+    @action(detail=True, methods=["post"])
+    def route_from_default(self, request, pk=None):
+        """Заполнить маршрут изделия стандартным набором этапов.
+
+        Нужно, чтобы технолог не добавлял пять этапов руками каждому изделию:
+        берётся общий справочник, дальше маршрут правится точечно.
+        Уже добавленные этапы не дублируются.
+        """
+        product = self.get_object()
+        ensure_default_stages()
+        added = 0
+        for tpl in StageTemplate.objects.filter(is_active=True):
+            _, created = ProductRouteStage.objects.get_or_create(
+                product=product, template=tpl,
+                defaults={"position": tpl.position, "norm_hours": tpl.default_norm_hours})
+            added += created
+        return Response(ProductDetailSerializer(product).data)
 
     @action(detail=True, methods=["get"])
     def bom_check(self, request, pk=None):
@@ -49,6 +68,13 @@ class StageTemplateViewSet(CatalogBase):
     """Конструктор этапов цеха: технолог создаёт/удаляет/переупорядочивает этапы."""
     queryset = StageTemplate.objects.all()
     serializer_class = StageTemplateSerializer
+
+
+class ProductRouteStageViewSet(CatalogBase):
+    """Маршрут изделия: какие этапы и в каком порядке оно проходит."""
+    queryset = ProductRouteStage.objects.select_related("product", "template")
+    serializer_class = ProductRouteStageSerializer
+    filterset_fields = ["product"]
 
 
 class BOMItemViewSet(CatalogBase):

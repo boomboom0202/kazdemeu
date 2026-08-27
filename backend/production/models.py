@@ -134,6 +134,35 @@ def ensure_default_stages():
             StageTemplate.objects.get_or_create(code=code, defaults={"name": name, "position": pos})
 
 
+class ProductRouteStage(models.Model):
+    """Маршрут конкретного изделия: какие этапы и в каком порядке его проходят.
+
+    Если у изделия нет ни одной записи, заказ собирается по общему справочнику
+    (StageTemplate с галочкой «использовать в новых заказах») — так изделия,
+    заведённые до появления маршрутов, продолжают работать как раньше.
+    """
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="route")
+    template = models.ForeignKey(StageTemplate, on_delete=models.PROTECT,
+                                 related_name="in_routes", verbose_name="Этап")
+    position = models.PositiveSmallIntegerField("Порядок", default=0)
+    norm_hours = models.DecimalField("Норма часов на этап", max_digits=8, decimal_places=2,
+                                     default=0,
+                                     help_text="0 — взять норму из справочника этапов")
+
+    class Meta:
+        ordering = ["position", "id"]
+        unique_together = ("product", "template")
+        verbose_name = "Этап маршрута изделия"
+        verbose_name_plural = "Маршрут изделия"
+
+    def __str__(self):
+        return f"{self.product.sku}: {self.position}. {self.template.name}"
+
+    @property
+    def effective_norm_hours(self):
+        return self.norm_hours or self.template.default_norm_hours
+
+
 class ProductionOrder(models.Model):
     """Производственный заказ: материалы → готовая продукция."""
     class Status(models.TextChoices):
@@ -158,13 +187,19 @@ class ProductionOrder(models.Model):
         return f"ПЗ №{self.number}: {self.product.name} × {self.qty}"
 
     def create_stages(self):
-        """Этапы берутся из конструктора (StageTemplate), а не из жёсткого списка."""
+        """Этапы заказа: сначала маршрут изделия, при его отсутствии — общий справочник."""
         ensure_default_stages()
-        for tpl in StageTemplate.objects.filter(is_active=True):
+        route = list(self.product.route.select_related("template").all())
+        if route:
+            plan = [(r.template.code, r.template.name, r.position, r.effective_norm_hours)
+                    for r in route]
+        else:
+            plan = [(t.code, t.name, t.position, t.default_norm_hours)
+                    for t in StageTemplate.objects.filter(is_active=True)]
+        for code, name, position, norm_hours in plan:
             ProductionStage.objects.get_or_create(
-                order=self, stage=tpl.code,
-                defaults={"position": tpl.position, "name": tpl.name,
-                          "norm_hours": tpl.default_norm_hours})
+                order=self, stage=code,
+                defaults={"position": position, "name": name, "norm_hours": norm_hours})
 
     def write_off_materials(self):
         """Автосписание материалов по BOM при запуске заказа."""
