@@ -40,8 +40,12 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
         new_status = request.data.get("status")
         allowed = Contract.TRANSITIONS.get(contract.status, set())
         if new_status not in allowed:
+            labels = dict(Contract.Status.choices)
+            can_go = ", ".join(f"«{labels.get(a, a)}»" for a in sorted(allowed)) or "ничего"
             return Response(
-                {"detail": f"Переход {contract.status} → {new_status} запрещён. Доступно: {sorted(map(str, allowed))}"},
+                {"detail": f"Из статуса «{labels.get(contract.status, contract.status)}» "
+                           f"нельзя перейти в «{labels.get(new_status, new_status)}». "
+                           f"Доступные переходы: {can_go}."},
                 status=status.HTTP_400_BAD_REQUEST)
         contract.status = new_status
         contract.save(update_fields=["status", "updated_at"])

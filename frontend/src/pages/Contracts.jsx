@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, fmt, CONTRACT_STATUS, canEdit } from '../api'
+import { api, fmt, CONTRACT_STATUS, canEdit, apiError } from '../api'
 import { Link } from 'react-router-dom'
 
 export default function Contracts({ user }) {
@@ -41,19 +41,19 @@ export default function Contracts({ user }) {
         const { data } = await api.post('/customers/', custForm)
         resetCust(); await loadCustomers(); setForm(f => ({ ...f, customer: data.id }))
       }
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const editCust = (c) => { setEditCustId(c.id); setCustForm({ name: c.name, phone: c.phone || '', bin_iin: c.bin_iin || '', contact_person: c.contact_person || '' }) }
   const deleteCust = async (c) => {
     if (!confirm(`Удалить клиента «${c.name}»?`)) return
     try { await api.delete(`/customers/${c.id}/`); await loadCustomers() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const deleteContract = async (c) => {
     if (!confirm(`Удалить договор №${c.number}? Вместе с ним удалятся его платежи, файлы и комментарии.`)) return
     try { await api.delete(`/contracts/${c.id}/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const exportExcel = async () => {

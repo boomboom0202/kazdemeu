@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { api, fmt, fmtD } from '../api'
+import { api, fmt, fmtD, apiError } from '../api'
 import { Loader, LoadError } from '../components/Loader'
 
 /**
@@ -32,7 +32,7 @@ export default function CostPrice() {
       setForm({ name: '', monthly_amount: '', category: '' })
       load()
     } catch (e) {
-      alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка')
+      alert(apiError(e))
     }
   }
   const patch = async (id, body) => { await api.patch(`/fixed-costs/${id}/`, body); load() }

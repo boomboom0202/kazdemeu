@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD } from '../api'
+import { api, fmt, fmtD, apiError } from '../api'
 
 const PO_STATUS = { planned: 'Запланирован', in_progress: 'В работе', done: 'Завершён', cancelled: 'Отменён' }
 
@@ -32,13 +32,13 @@ export default function Production({ user }) {
         default_norm_hours: stageForm.default_norm_hours || 0,
       })
       setStageForm({ code: '', name: '', position: '', default_norm_hours: '' }); loadStages()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const patchStage = async (id, body) => { await api.patch(`/stage-templates/${id}/`, body); loadStages() }
   const delStage = async (s) => {
     if (!confirm(`Удалить этап «${s.name}»? Он исчезнет из новых производственных заказов.`)) return
     try { await api.delete(`/stage-templates/${s.id}/`); loadStages() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const load = () => {
@@ -69,7 +69,7 @@ export default function Production({ user }) {
       else await api.post('/products/', body)
       resetProd(); load()
       if (editProdId && detail?.id === editProdId) openProduct(editProdId)
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const editProduct = (p, e) => {
     e.stopPropagation()
@@ -81,7 +81,7 @@ export default function Production({ user }) {
     e.stopPropagation()
     if (!confirm(`Удалить изделие «${p.name}»?`)) return
     try { await api.delete(`/products/${p.id}/`); if (detail?.id === p.id) setDetail(null); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const addBom = async () => {
@@ -89,7 +89,7 @@ export default function Production({ user }) {
       await api.post('/bom-items/', { product: detail.id, material: bomForm.material, qty: bomForm.qty })
       setBomForm({ material: '', qty: '' })
       openProduct(detail.id); load()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const addRoute = async () => {
     const next = (detail.route || []).length
@@ -99,10 +99,12 @@ export default function Production({ user }) {
         position: next, norm_hours: routeForm.norm_hours || 0,
       })
       setRouteForm({ template: '', norm_hours: '' }); openProduct(detail.id)
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const patchRoute = async (id, body) => { await api.patch(`/product-route/${id}/`, body); openProduct(detail.id) }
   const delRoute = async (r) => {
+    // кнопка стоит вплотную к стрелкам — без подтверждения легко промахнуться
+    if (!confirm(`Убрать этап «${r.stage_name}» из маршрута изделия?`)) return
     await api.delete(`/product-route/${r.id}/`); openProduct(detail.id)
   }
   const moveRoute = async (i, dir) => {
@@ -120,18 +122,18 @@ export default function Production({ user }) {
   const deleteBom = async (bid) => {
     if (!confirm('Убрать материал из состава?')) return
     try { await api.delete(`/bom-items/${bid}/`); openProduct(detail.id); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const act = async (id, action) => {
     try { await api.post(`/production-orders/${id}/${action}/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    catch (e) { alert(apiError(e)) }
   }
 
   const deleteOrder = async (o) => {
     if (!confirm(`Удалить производственный заказ ПЗ №${o.number}?`)) return
     try { await api.delete(`/production-orders/${o.id}/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const stageAct = async (sid, action) => { await api.post(`/production-stages/${sid}/${action}/`); load() }

@@ -3,6 +3,7 @@ from decimal import Decimal
 from collections import defaultdict
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import section_read
 from rest_framework.response import Response
 from django.db.models import Sum, Count, F, Value, DecimalField
 from django.db.models.functions import TruncMonth, Coalesce
@@ -10,7 +11,7 @@ from django.utils import timezone
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("analytics")])
 def product_analytics(request):
     """Рейтинг ликвидности: продажи (отгрузки) за период + себестоимость/маржа."""
     from production.models import Product
@@ -50,7 +51,7 @@ def product_analytics(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("analytics")])
 def stock_value(request):
     """Стоимость остатков готовой продукции на складе: по себестоимости и по цене продажи."""
     from production.models import Product
@@ -79,7 +80,7 @@ def stock_value(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("analytics")])
 def contracts_status_analytics(request):
     """Статус исполнения: закрытые / открытые / просроченные."""
     from contracts.models import Contract
@@ -98,6 +99,8 @@ def contracts_status_analytics(request):
 
 
 @api_view(["GET"])
+# Дашборд — стартовая страница для всех ролей; денежные показатели
+# внутри скрываются через show_money, поэтому раздел здесь не требуется.
 @permission_classes([IsAuthenticated])
 def dashboard(request):
     """KPI для главного экрана. Денежные показатели — только тем, кто видит финансы."""

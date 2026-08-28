@@ -69,3 +69,36 @@ export const CONTRACT_STATUS = {
   closed: { label: 'Закрыт', color: '#1d7a4f' },
   cancelled: { label: 'Отменён', color: '#b03030' },
 }
+
+// Имена полей, как их называет пользователь, а не как они зовутся в базе
+const FIELD_NAMES = {
+  number: 'Номер', name: 'Наименование', sku: 'Артикул', title: 'Название',
+  amount: 'Сумма', qty: 'Количество', price: 'Цена', unit_price: 'Цена за единицу',
+  customer: 'Заказчик', product: 'Изделие', material: 'Материал', supplier: 'Поставщик',
+  deadline: 'Срок', signed_date: 'Дата подписания', due_date: 'Срок платежа',
+  date: 'Дата', category: 'Категория', monthly_amount: 'Сумма в месяц',
+  base_price: 'Цена продажи', labor_cost: 'Оплата труда', norm_hours: 'Норма времени',
+  min_stock: 'Минимальный остаток', code: 'Код', position: 'Порядок',
+  username: 'Логин', password: 'Пароль', role: 'Роль', template: 'Этап',
+}
+
+/**
+ * Человеческий текст ошибки вместо сырого JSON.
+ * DRF отдаёт либо {"detail": "..."} , либо словарь по полям
+ * {"sku": ["Уже существует."]} — второе показывать как есть нельзя.
+ */
+export function apiError(e, fallback = 'Не удалось выполнить действие') {
+  if (e?.code === 'ECONNABORTED') return 'Сервер долго не отвечает. Попробуйте ещё раз.'
+  const d = e?.response?.data
+  if (!d) return e?.message === 'Network Error'
+    ? 'Нет связи с сервером. Проверьте подключение и повторите.'
+    : fallback
+  if (typeof d === 'string') return d
+  if (d.detail) return d.detail
+  const lines = []
+  for (const [field, val] of Object.entries(d)) {
+    const text = Array.isArray(val) ? val.join(' ') : String(val)
+    lines.push(field === 'non_field_errors' ? text : `${FIELD_NAMES[field] || field}: ${text}`)
+  }
+  return lines.length ? lines.join('\n') : fallback
+}

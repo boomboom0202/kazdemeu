@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, fmt, canEdit } from '../api'
+import { api, fmt, canEdit, apiError } from '../api'
 import { Link } from 'react-router-dom'
 
 export const TENDER_STATUS = {
@@ -53,7 +53,7 @@ export default function Tenders({ user }) {
       if (editId) await api.patch(`/tenders/${editId}/`, body)
       else await api.post('/tenders/', body)
       reset(); load()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const edit = (t) => {
     setEditId(t.id); setShowForm(true)
@@ -72,18 +72,18 @@ export default function Tenders({ user }) {
   }
   const setStatusOf = async (t, s) => {
     try { await api.post(`/tenders/${t.id}/set_status/`, { status: s }); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    catch (e) { alert(apiError(e)) }
   }
   const calcCost = async (t) => {
     try { await api.post(`/tenders/${t.id}/calc_cost/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    catch (e) { alert(apiError(e)) }
   }
   const makeContract = async (t) => {
     const number = prompt('Номер договора:', `Т-${t.purchase_no || t.id}`)
     if (!number) return
     try { const { data } = await api.post(`/tenders/${t.id}/make_contract/`, { number }); load()
       alert(`Договор ${data.contract_number} создан — откройте раздел «Договоры».`) }
-    catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    catch (e) { alert(apiError(e)) }
   }
   const exportExcel = async () => {
     const r = await api.get('/tenders/export_excel/', { responseType: 'blob' })

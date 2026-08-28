@@ -53,3 +53,24 @@ class RoleSectionPermission(BasePermission):
         if request.method in SAFE_METHODS:
             return can_read(u, section)
         return can_write(u, section)
+
+class SectionReadPermission(BasePermission):
+    """Проверка доступа на чтение по разделу — для функциональных вьюх.
+
+    ViewSet'ы пользуются RoleSectionPermission, а отчёты и аналитика написаны
+    как @api_view и раньше стояли под голым IsAuthenticated: исходные данные
+    (движения денег, постоянные расходы) были закрыты, а построенные на них
+    отчёты — открыты любому вошедшему.
+    """
+    section = None
+
+    def has_permission(self, request, view):
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        return can_read(u, self.section)
+
+
+def section_read(name):
+    """Готовый класс прав на чтение раздела: section_read("finance")."""
+    return type("SectionRead_" + name, (SectionReadPermission,), {"section": name})

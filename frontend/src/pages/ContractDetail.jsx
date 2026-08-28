@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api, fmt, CONTRACT_STATUS } from '../api'
+import { api, fmt, CONTRACT_STATUS, apiError } from '../api'
 import { Loader, LoadError } from '../components/Loader'
 
 const FILE_KINDS = { sketch: 'Эскиз', layout: 'Макет', techcard: 'Техкарта', photo: 'Фото', other: 'Другое' }
@@ -29,7 +29,7 @@ export default function ContractDetail() {
 
   const setStatus = async (s) => {
     try { const { data } = await api.post(`/contracts/${id}/set_status/`, { status: s }); setC(data) }
-    catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    catch (e) { alert(apiError(e)) }
   }
 
   const addComment = async () => {
@@ -61,7 +61,7 @@ export default function ContractDetail() {
   const del = async (url, msg) => {
     if (!confirm(msg)) return
     try { await api.delete(url); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   return (

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD } from '../api'
+import { api, fmt, fmtD, apiError } from '../api'
 
 const PO_ST = { draft: 'Черновик', sent: 'Отправлена', received: 'Получена', cancelled: 'Отменена' }
 
@@ -53,7 +53,7 @@ export default function Warehouse() {
       if (editMatId) await api.patch(`/materials/${editMatId}/`, body)
       else await api.post('/materials/', body)
       resetMat(); load()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const editMaterial = (m) => {
     setEditMatId(m.id); setShowMat(true)
@@ -63,7 +63,7 @@ export default function Warehouse() {
   const deleteMaterial = async (m) => {
     if (!confirm(`Удалить материал «${m.name}»?`)) return
     try { await api.delete(`/materials/${m.id}/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const resetSup = () => { setShowSup(false); setEditSupId(null); setSupForm({ name: '', phone: '', email: '', bin_iin: '' }) }
@@ -72,7 +72,7 @@ export default function Warehouse() {
       if (editSupId) await api.patch(`/suppliers/${editSupId}/`, supForm)
       else await api.post('/suppliers/', supForm)
       resetSup(); loadSuppliers()
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const editSupplier = (s) => {
     setEditSupId(s.id); setShowSup(true)
@@ -82,7 +82,7 @@ export default function Warehouse() {
   const deleteSupplier = async (s) => {
     if (!confirm(`Удалить поставщика «${s.name}»?`)) return
     try { await api.delete(`/suppliers/${s.id}/`); loadSuppliers() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   const addBatch = async () => {

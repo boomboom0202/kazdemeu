@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, fmt } from '../api'
+import { api, fmt, apiError } from '../api'
 import { Loader, LoadError } from '../components/Loader'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
 import { useIsMobile } from '../useIsMobile'
@@ -51,18 +51,18 @@ export default function Finance() {
         const { data } = await api.post('/expense-categories/', catForm)
         resetCat(); await loadCats(); setForm(f => ({ ...f, category: data.id }))
       }
-    } catch (e) { alert(e.response?.data ? JSON.stringify(e.response.data) : 'Ошибка') }
+    } catch (e) { alert(apiError(e)) }
   }
   const editCat = (c) => { setEditCatId(c.id); setCatForm({ name: c.name, kind: c.kind }) }
   const deleteCat = async (c) => {
     if (!confirm(`Удалить категорию «${c.name}»?`)) return
     try { await api.delete(`/expense-categories/${c.id}/`); await loadCats() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
   const delEntry = async (id) => {
     if (!confirm('Удалить операцию?')) return
     try { await api.delete(`/cash-entries/${id}/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось удалить') }
+    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
   if (failed && !(cf && pnl && forecast)) return <LoadError onRetry={load} />

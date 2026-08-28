@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import section_read
 from rest_framework.response import Response
 from django.db.models import Sum, Q
 from django.db.models.functions import TruncMonth
@@ -38,9 +39,14 @@ class FixedCostViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 @api_view(["GET", "PATCH"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("finance")])
 def cost_settings(request):
-    """Настройки расчёта себестоимости (одна запись). Смотрят все, меняет — кто пишет финансы."""
+    """Настройки расчёта себестоимости (одна запись).
+
+    Читают те, у кого есть доступ к финансам, меняют — у кого есть право записи.
+    Раньше чтение было открыто всем вошедшим, а оно отдаёт сумму постоянных
+    расходов и ставку накладных — это финансовые данные.
+    """
     from accounts.permissions import can_write
     obj = CostSettings.get_solo()
     if request.method == "PATCH":
@@ -73,7 +79,7 @@ def _month_series(qs):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("finance")])
 def cashflow_report(request):
     """ДДС/ОДДС: помесячно приход/расход/чистый поток/остаток."""
     return Response({
@@ -85,7 +91,7 @@ def cashflow_report(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("finance")])
 def pnl_report(request):
     """ОПиУ: доходы/расходы по категориям, чистая прибыль, рентабельность,
     структура расходов и деление постоянные/переменные."""
@@ -109,7 +115,7 @@ def pnl_report(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([section_read("finance")])
 def forecast_report(request):
     """Потенциальные поступления (воронка): взвешенные по стадии договора +
     неоплаченный остаток графика платежей."""
