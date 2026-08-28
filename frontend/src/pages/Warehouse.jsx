@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError } from '../api'
+import { api, fmt, fmtD, apiError, canEdit} from '../api'
 
 const PO_ST = { draft: 'Черновик', sent: 'Отправлена', received: 'Получена', cancelled: 'Отменена' }
 
-export default function Warehouse() {
+export default function Warehouse({ user }) {
+  // склад некоторые роли только читают — тогда прячем всё, что пишет
+  const ro = !canEdit(user, 'warehouse')
   const [tab, setTab] = useState('materials')
   const [materials, setMaterials] = useState([])
   const [batches, setBatches] = useState([])
@@ -116,11 +118,12 @@ export default function Warehouse() {
   const checkStock = async () => { await api.post('/materials/check_stock/'); load(); alert('Проверка завершена: уведомления и авто-заявки обновлены.') }
 
   return (
-    <div>
+    <div className={ro ? 'readonly' : ''}>
       <div className="pagehead">
         <h1>Склад</h1>
         <button className="btn ghost small" onClick={checkStock}>Проверить остатки (авто-заявка)</button>
       </div>
+      {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Ваша роль видит склад, но не меняет его. За приход и списание отвечает кладовщик.</div>}
       <div className="tabs">
         <button className={tab === 'materials' ? 'active' : ''} onClick={() => setTab('materials')}>Материалы</button>
         <button className={tab === 'movements' ? 'active' : ''} onClick={() => setTab('movements')}>Движения материалов</button>
@@ -170,7 +173,7 @@ export default function Warehouse() {
                     <td>{m.default_supplier_name || '—'}</td>
                     <td>{m.low_stock ? <span className="pill low">мало</span> : <span className="pill ok">достаточно</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn small ghost" onClick={() => openMovements(m.id)}>История</button>{' '}
+                      <button className="btn small ghost btn-read" onClick={() => openMovements(m.id)}>История</button>{' '}
                       <button className="btn small ghost" onClick={() => editMaterial(m)}>Изм.</button>{' '}
                       <button className="btn small ghost" onClick={() => deleteMaterial(m)}>Удл.</button>
                     </td>

@@ -115,7 +115,7 @@ export default function App() {
         <Route path="/contracts" element={<Contracts user={user} />} />
         <Route path="/contracts/:id" element={<ContractDetail user={user} />} />
         <Route path="/production" element={<Production user={user} />} />
-        <Route path="/warehouse" element={<Warehouse />} />
+        <Route path="/warehouse" element={<Warehouse user={user} />} />
         <Route path="/finance" element={<Finance />} />
         <Route path="/cost-price" element={<CostPrice />} />
         <Route path="/analytics" element={<Analytics />} />

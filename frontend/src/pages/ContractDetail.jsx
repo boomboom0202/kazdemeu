@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api, fmt, CONTRACT_STATUS, apiError } from '../api'
+import { api, fmt, CONTRACT_STATUS, apiError, canEdit} from '../api'
 import { Loader, LoadError } from '../components/Loader'
 
 const FILE_KINDS = { sketch: 'Эскиз', layout: 'Макет', techcard: 'Техкарта', photo: 'Фото', other: 'Другое' }
 
-export default function ContractDetail() {
+export default function ContractDetail({ user }) {
+  const ro = !canEdit(user, 'contracts')
   const { id } = useParams()
   const [c, setC] = useState(null)
   const [tab, setTab] = useState('payments')
@@ -65,7 +66,7 @@ export default function ContractDetail() {
   }
 
   return (
-    <div>
+    <div className={ro ? 'readonly' : ''}>
       <div className="pagehead">
         <div>
           <h1>№{c.number} — {c.title}</h1>

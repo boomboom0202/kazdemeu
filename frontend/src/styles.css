@@ -263,3 +263,19 @@ img, svg, video { max-width: 100%; height: auto; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+/* ── Раздел доступен только на чтение ────────────────────────────────
+   Роль видит данные, но писать в них не может. Раньше кнопки всё равно
+   показывались и возвращали отказ сервера — предлагать действие, которое
+   заведомо не выполнится, хуже, чем не показывать его вовсе.
+   Кнопки просмотра помечаются классом btn-read и остаются на месте. */
+.readonly .formrow { display: none; }
+.readonly button.btn:not(.btn-read), .readonly a.btn:not(.btn-read) { display: none; }
+.readonly td input, .readonly td select, .readonly td textarea { pointer-events: none; opacity: .55; }
+.ro-note {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px dashed var(--line);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+  font-size: 13.5px; color: var(--ink-soft);
+}
+.ro-note b { color: var(--ink); }
