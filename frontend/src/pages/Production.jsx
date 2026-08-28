@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError } from '../api'
+import { api, fmt, fmtD, apiError, canEdit} from '../api'
 
 const PO_STATUS = { planned: 'Запланирован', in_progress: 'В работе', done: 'Завершён', cancelled: 'Отменён' }
 
 export default function Production({ user }) {
+  // Вкладки принадлежат разным разделам прав: изделия и конструктор этапов —
+  // это каталог, производственные заказы — производство. Кладовщик и цех
+  // могут вести заказы, но не менять изделия, поэтому флага на всю
+  // страницу мало.
+  const roCatalog = !canEdit(user, 'catalog')
+  const roProd = !canEdit(user, 'production')
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
   const [materials, setMaterials] = useState([])
@@ -152,7 +158,8 @@ export default function Production({ user }) {
       </div>
 
       {tab === 'stages' && (
-        <>
+        <div className={roCatalog ? 'readonly' : ''}>
+          {roCatalog && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
           <div className="card stitch">
             <h2>Конструктор этапов производства</h2>
             <p className="muted">Технолог собирает маршрут цеха с нуля: этапы, их порядок и нормы времени.
@@ -183,11 +190,12 @@ export default function Production({ user }) {
               </tbody>
             </table>
           </div>
-        </>
+        </div>
       )}
 
       {tab === 'orders' && (
-        <>
+        <div className={roProd ? 'readonly' : ''}>
+          {roProd && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Запускать заказы и отмечать этапы может цех, кладовщик или технолог.</div>}
           <div className="card stitch">
             <h2>Новый производственный заказ</h2>
             <div className="formrow">
@@ -245,11 +253,12 @@ export default function Production({ user }) {
               </div>
             </div>
           ))}
-        </>
+        </div>
       )}
 
       {tab === 'products' && (
-        <>
+        <div className={roCatalog ? 'readonly' : ''}>
+          {roCatalog && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
           <div className="pagehead" style={{ marginTop: 0 }}>
             <span className="muted">Справочник изделий. Себестоимость и маржа считаются автоматически из BOM и цен материалов.</span>
             <button className="btn small" onClick={() => showProd ? resetProd() : setShowProd(true)}>{showProd ? 'Закрыть' : '+ Новое изделие'}</button>
@@ -386,7 +395,7 @@ export default function Production({ user }) {
               ) : <div className="card muted">Выберите изделие — откроются BOM, себестоимость и QR-код.</div>}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
