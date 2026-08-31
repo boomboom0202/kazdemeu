@@ -46,9 +46,10 @@ class Command(BaseCommand):
                                       StockMovement, Material, Supplier,
                                       PurchaseOrder)
 
-        # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются
+        # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются.
+        # Журнал и уведомления идут последними: удаление записей само пишется
+        # в журнал, и вычищенный первым он снова оказался бы полным.
         plan = [
-            Notification, AuditLog,
             Comment, ContractFile, PaymentScheduleItem, CashEntry,
             Tender,
             ProductionStage, ProductionOrder,
@@ -79,6 +80,11 @@ class Command(BaseCommand):
 
             # чистый стандартный маршрут вместо накопившихся правок
             ensure_default_stages()
+
+            # и в самом конце — журнал, куда всё вышеперечисленное только что записалось
+            for model in (Notification, AuditLog):
+                n, _ = model.objects.all().delete()
+                self.stdout.write(f"  {model.__name__:24} удалено {n}")
 
         self.stdout.write(self.style.SUCCESS(
             "Готово. Настройки себестоимости и учётная запись администратора "
