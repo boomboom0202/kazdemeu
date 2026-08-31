@@ -35,7 +35,6 @@ export default function Login({ onLogin }) {
         <div style={{ height: 16 }} />
         <button className="btn" style={{ width: '100%' }} onClick={submit}>Войти</button>
         {err && <div className="error">{err}</div>}
-        <p className="muted" style={{ marginTop: 12 }}>Демо: admin / admin12345</p>
       </div>
     </div>
   )
