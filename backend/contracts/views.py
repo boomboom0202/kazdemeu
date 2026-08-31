@@ -15,6 +15,21 @@ EXPORT_HEADERS = ["number", "customer", "title", "status", "amount",
                   "signed_date", "deadline", "specification"]
 
 
+def parse_amount_cell(value):
+    """Сумма из ячейки. Люди копируют её из отчётов вместе с пробелами
+    и знаком тенге: «450 000 ₸». Раньше такая строка роняла весь договор."""
+    if value is None or value == "":
+        return 0
+    if isinstance(value, (int, float)):
+        return value
+    text = (str(value).replace("\xa0", "").replace(" ", "")
+            .replace("₸", "").replace("тг", "").replace(",", "."))
+    try:
+        return float(text)
+    except ValueError:
+        return 0
+
+
 def parse_date_cell(value):
     """Дата из текстовой ячейки. None, если формат непонятен.
 
@@ -107,7 +122,7 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
                 defaults = {
                     "customer": customer,
                     "title": str(data.get("title") or "")[:255],
-                    "amount": data.get("amount") or 0,
+                    "amount": parse_amount_cell(data.get("amount")),
                     "specification": str(data.get("specification") or ""),
                 }
                 for f in ("signed_date", "deadline"):

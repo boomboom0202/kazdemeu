@@ -5,11 +5,25 @@ from .models import UserAccess, User, AuditLog, Notification
 class UserSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source="get_role_display", read_only=True)
     perms = serializers.SerializerMethodField()
+    # Пароль принимается и при изменении: человек забывает его, а другого
+    # способа выдать новый в системе нет — своей страницы смены пароля
+    # у сотрудника не предусмотрено.
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True,
+                                     min_length=8,
+                                     error_messages={"min_length": "Пароль короче 8 символов."})
 
     class Meta:
         model = User
         fields = ["id", "username", "first_name", "last_name", "email", "phone",
-                  "role", "role_display", "is_active", "perms"]
+                  "role", "role_display", "is_active", "perms", "password"]
+
+    def update(self, instance, validated_data):
+        pwd = validated_data.pop("password", None)
+        user = super().update(instance, validated_data)
+        if pwd:
+            user.set_password(pwd)
+            user.save(update_fields=["password"])
+        return user
 
     def get_perms(self, obj):
         """Итоговые права — фронтенд прячет по ним меню, вкладки и кнопки.
@@ -22,10 +36,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(UserSerializer):
-    password = serializers.CharField(write_only=True)
-
-    class Meta(UserSerializer.Meta):
-        fields = UserSerializer.Meta.fields + ["password"]
+    password = serializers.CharField(write_only=True, min_length=8,
+                                     error_messages={"min_length": "Пароль короче 8 символов."})
 
     def create(self, validated_data):
         pwd = validated_data.pop("password")

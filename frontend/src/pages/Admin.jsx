@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, apiError } from '../api'
 import AccessRules from '../components/AccessRules'
 
 const ROLES = {
@@ -21,10 +21,33 @@ export default function Admin() {
   useEffect(load, [])
 
   const create = async () => {
-    await api.post('/users/', form)
-    setForm({ username: '', password: '', first_name: '', role: 'worker' }); load()
+    try {
+      await api.post('/users/', form)
+      setForm({ username: '', password: '', first_name: '', role: 'worker' }); load()
+    } catch (e) { alert(apiError(e)) }
   }
-  const setRole = async (id, role) => { await api.patch(`/users/${id}/`, { role }); load() }
+  const patch = async (id, body) => {
+    try { await api.patch(`/users/${id}/`, body); load() }
+    catch (e) { alert(apiError(e)); load() }
+  }
+  const setRole = (id, role) => patch(id, { role })
+
+  // Своей страницы смены пароля у сотрудника нет, поэтому забытый пароль
+  // выдаёт заново администратор — иначе человек остаётся без входа.
+  const resetPassword = async (u) => {
+    const password = prompt(`Новый пароль для «${u.username}» (не короче 8 символов):`)
+    if (!password) return
+    await patch(u.id, { password })
+    alert(`Пароль для «${u.username}» изменён. Передайте его сотруднику ` +
+      'и попросите сменить при первом входе.')
+  }
+
+  const toggleActive = (u) => {
+    if (u.is_active && !confirm(
+      `Отключить «${u.username}»? Он больше не сможет войти. ` +
+      'Введённые им данные останутся на месте.')) return
+    patch(u.id, { is_active: !u.is_active })
+  }
 
   return (
     <div>
@@ -53,7 +76,7 @@ export default function Admin() {
           </div>
           <div className="card" style={{ padding: 0 }}>
             <table>
-              <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Активен</th></tr></thead>
+              <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Активен</th><th /></tr></thead>
               <tbody>
                 {users.map(u => (
                   <tr key={u.id}>
@@ -63,6 +86,11 @@ export default function Admin() {
                       {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select></td>
                     <td>{u.is_active ? <span className="pill ok">да</span> : <span className="pill low">нет</span>}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn small ghost" onClick={() => resetPassword(u)}>Сменить пароль</button>{' '}
+                      <button className="btn small ghost" onClick={() => toggleActive(u)}>
+                        {u.is_active ? 'Отключить' : 'Включить'}</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

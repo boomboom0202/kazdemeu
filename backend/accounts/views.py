@@ -27,19 +27,28 @@ class UserViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminRole()]
 
-    def _guard(self, target, new_role=None, deleting=False):
-        """Защита от потери доступа: нельзя разжаловать самого себя
-        и нельзя убрать последнего администратора."""
-        if target.pk == self.request.user.pk and (deleting or (new_role and new_role != "admin")):
-            return ("Нельзя изменить роль или удалить собственную учётную запись — "
-                    "вы потеряете доступ к системе. Попросите другого администратора.")
-        if target.role == "admin" and (deleting or (new_role and new_role != "admin")):
+    def _guard(self, target, new_role=None, deleting=False, deactivating=False):
+        """Защита от потери доступа: нельзя разжаловать или отключить самого себя
+        и нельзя убрать последнего администратора.
+
+        Отключение приравнено к удалению: отключённый администратор в систему
+        не войдёт, а значит последний из них так же оставит её без управления.
+        """
+        losing = deleting or deactivating or (new_role and new_role != "admin")
+        if target.pk == self.request.user.pk and losing:
+            return ("Нельзя изменить роль, отключить или удалить собственную учётную "
+                    "запись — вы потеряете доступ к системе. Попросите другого "
+                    "администратора.")
+        if target.role == "admin" and losing:
             if User.objects.filter(role="admin", is_active=True).count() <= 1:
                 return "Это последний администратор — система останется без управления."
         return None
 
     def perform_update(self, serializer):
-        err = self._guard(serializer.instance, new_role=serializer.validated_data.get("role"))
+        data = serializer.validated_data
+        err = self._guard(serializer.instance, new_role=data.get("role"),
+                          deactivating=(data.get("is_active") is False
+                                        and serializer.instance.is_active))
         if err:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({"detail": err})
