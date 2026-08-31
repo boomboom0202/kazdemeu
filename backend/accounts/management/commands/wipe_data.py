@@ -8,19 +8,15 @@
 себестоимости — это конфигурация, а не данные.
 Справочник этапов сбрасывается к пяти стандартным.
 
-С флагом --demo-users заодно удаляются демонстрационные сотрудники
-(Айгерим, Болат, Сауле, Марат и прочие из seed_demo). Администратор
-остаётся всегда: без него в систему не войти.
+С флагом --users заодно удаляются все сотрудники, кроме администраторов:
+при вводе в эксплуатацию учётные записи заводятся заново, под настоящих
+людей. Администратор остаётся всегда — без него в систему не войти.
 
 Запуск нарочно требует подтверждения:
-    python manage.py wipe_data --yes-i-am-sure [--demo-users]
+    python manage.py wipe_data --yes-i-am-sure [--users]
 """
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
-# Логины, которые создаёт seed_demo — только их и удаляем по --demo-users,
-# чтобы не задеть настоящих сотрудников, заведённых вручную.
-DEMO_LOGINS = ["aigerim", "bolat", "saule", "marat", "sklad", "director"]
 
 
 class Command(BaseCommand):
@@ -29,8 +25,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--yes-i-am-sure", action="store_true",
                             help="Подтверждение: данные будут удалены безвозвратно")
-        parser.add_argument("--demo-users", action="store_true",
-                            help="Заодно удалить демонстрационных сотрудников")
+        parser.add_argument("--users", action="store_true",
+                            help="Заодно удалить всех сотрудников, кроме администраторов")
 
     def handle(self, *args, **opts):
         if not opts["yes_i_am_sure"]:
@@ -69,14 +65,13 @@ class Command(BaseCommand):
                 n, _ = model.objects.all().delete()
                 self.stdout.write(f"  {model.__name__:24} удалено {n}")
 
-            if opts["demo_users"]:
+            if opts["users"]:
                 # Администраторы неприкосновенны в любом случае: удалить
                 # последнего значит запереть систему снаружи.
-                doomed = User.objects.filter(username__in=DEMO_LOGINS).exclude(
-                    role="admin").exclude(is_superuser=True)
+                doomed = User.objects.exclude(role="admin").exclude(is_superuser=True)
                 names = list(doomed.values_list("username", flat=True))
                 doomed.delete()
-                self.stdout.write(f"  демо-сотрудники        удалено {len(names)}"
+                self.stdout.write(f"  сотрудники               удалено {len(names)}"
                                   + (f" ({', '.join(names)})" if names else ""))
 
             if not User.objects.filter(is_superuser=True).exists():
