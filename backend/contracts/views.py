@@ -15,6 +15,22 @@ EXPORT_HEADERS = ["number", "customer", "title", "status", "amount",
                   "signed_date", "deadline", "specification"]
 
 
+def parse_date_cell(value):
+    """Дата из текстовой ячейки. None, если формат непонятен.
+
+    Ячейку с настоящим форматом даты Excel отдаёт как datetime — её разбирать
+    не надо. Текстом дату пишут по-разному, и раньше принимался только
+    ISO-вид: строка с «15.09.2026» роняла весь договор, а не одно поле.
+    """
+    text = str(value).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 class CustomerViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
     access_key = "contracts.customers"
     queryset = Customer.objects.all().order_by("name")
@@ -94,15 +110,35 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
                     "amount": data.get("amount") or 0,
                     "specification": str(data.get("specification") or ""),
                 }
-                st = str(data.get("status") or "").strip()
-                if st in dict(Contract.Status.choices):
-                    defaults["status"] = st
                 for f in ("signed_date", "deadline"):
                     v = data.get(f)
                     if isinstance(v, datetime):
                         defaults[f] = v.date()
                     elif isinstance(v, str) and v.strip():
-                        defaults[f] = datetime.strptime(v.strip()[:10], "%Y-%m-%d").date()
+                        d = parse_date_cell(v)
+                        if d is None:
+                            errors.append(f"строка {i}: дату «{v.strip()}» разобрать не удалось, "
+                                          "поле оставлено пустым. Ожидается 2026-09-15 или 15.09.2026.")
+                        else:
+                            defaults[f] = d
+
+                # Статус подчиняется той же цепочке, что и кнопки в карточке.
+                # У нового договора он может быть любым — в систему вносят и те,
+                # что давно в работе. У существующего запрещённый переход не
+                # применяется молча: строка загружается, статус остаётся прежним,
+                # а причина попадает в список замечаний.
+                existing = Contract.objects.filter(number=number).first()
+                st = str(data.get("status") or "").strip()
+                if st in dict(Contract.Status.choices):
+                    if existing is None:
+                        defaults["status"] = st
+                    else:
+                        err = existing.transition_error(st)
+                        if err:
+                            errors.append(f"строка {i}: {err} Статус договора не изменён.")
+                        else:
+                            defaults["status"] = st
+
                 _, was_created = Contract.objects.update_or_create(number=number, defaults=defaults)
                 created += was_created
                 updated += (not was_created)

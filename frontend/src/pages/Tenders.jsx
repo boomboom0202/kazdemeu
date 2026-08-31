@@ -95,7 +95,8 @@ export default function Tenders({ user }) {
     const fd = new FormData(); fd.append('file', f)
     try {
       const { data } = await api.post('/tenders/import_excel/', fd)
-      alert(`Импорт: загружено ${data.created}, пропущено ${data.skipped}` +
+      alert(`Импорт: добавлено ${data.created}, обновлено ${data.updated ?? 0}, ` +
+        `пропущено ${data.skipped}` +
         (data.errors?.length ? `\nОшибки:\n${data.errors.join('\n')}` : ''))
     } catch (err) { alert(err.response?.data?.detail || 'Ошибка импорта') }
     e.target.value = ''; load()

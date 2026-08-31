@@ -178,6 +178,8 @@ class TenderViewSet(TenderBase):
             "qty": col("кол-во"),
             "price": col("цена"),
             "plan_price": col("план цена"),
+            "cost_per_unit": col("себестоимость за ед", "себестоимость"),
+            "status": col("статус"),
             "samples": col("образц"),
             "decision": col("итого решение", "решение"),
         }
@@ -195,7 +197,7 @@ class TenderViewSet(TenderBase):
             except (ValueError, TypeError):
                 return 0
 
-        created, skipped, errors = 0, 0, []
+        created, updated, skipped, errors = 0, 0, 0, []
         for i, row in enumerate(rows[1:], start=2):
             try:
                 item = str(val(row, "item") or "").strip()
@@ -232,31 +234,54 @@ class TenderViewSet(TenderBase):
                 if not price and total and qty:
                     price = round(total / qty, 2)
 
-                # статус по отметкам в файле
-                status = Tender.Status.PLANNED
-                if val(row, "rejected"):
-                    status = Tender.Status.REJECTED
-                elif val(row, "submitted"):
-                    status = Tender.Status.SUBMITTED
-                if "отбой" in str(val(row, "decision") or "").lower():
-                    status = Tender.Status.DECLINED
+                # Статус: сначала колонка «Статус» — она есть в нашей же выгрузке,
+                # и без неё круговой рейс «выгрузил → поправил → загрузил» сбрасывал
+                # его в «В плане». Если такой колонки нет (рабочий файл заказчика),
+                # статус собирается по отметкам, как раньше.
+                status = None
+                sname = str(val(row, "status") or "").strip().lower()
+                if sname:
+                    status = next((k for k, label in Tender.Status.choices
+                                   if label.lower() == sname or k == sname), None)
+                if status is None:
+                    status = Tender.Status.PLANNED
+                    if val(row, "rejected"):
+                        status = Tender.Status.REJECTED
+                    elif val(row, "submitted"):
+                        status = Tender.Status.SUBMITTED
+                    if "отбой" in str(val(row, "decision") or "").lower():
+                        status = Tender.Status.DECLINED
 
                 dtime = val(row, "dtime")
-                Tender.objects.create(
+                purchase_no = str(val(row, "purchase_no") or "").strip()[:100]
+                lot_no = str(val(row, "lot_no") or "").strip()[:100]
+                fields = dict(
                     platform=platform, own_company=own,
-                    purchase_no=str(val(row, "purchase_no") or "").strip()[:100],
-                    lot_no=str(val(row, "lot_no") or "").strip()[:100],
                     customer_name=str(val(row, "customer") or "—").strip()[:255],
                     item_name=item[:255],
                     qty=qty, price=price, status=status,
                     plan_price=num(val(row, "plan_price")),
+                    cost_per_unit=num(val(row, "cost_per_unit")),
                     deadline=deadline,
                     deadline_time=dtime if hasattr(dtime, "hour") else None,
                     delivery_days=str(val(row, "delivery") or "").strip()[:100],
                     samples_required=str(val(row, "samples") or "").strip()[:255],
                     decision=str(val(row, "decision") or "").strip()[:255],
                 )
-                created += 1
+
+                # Лот узнаётся по номеру закупки и номеру лота: план присылают
+                # заново по нескольку раз, и раньше каждая загрузка плодила
+                # дубли всего файла. Если номера закупки в строке нет, узнать
+                # лот не по чему — такая строка добавляется как новая.
+                if purchase_no:
+                    _, was_created = Tender.objects.update_or_create(
+                        purchase_no=purchase_no, lot_no=lot_no, defaults=fields)
+                    created += was_created
+                    updated += (not was_created)
+                else:
+                    Tender.objects.create(purchase_no="", lot_no=lot_no, **fields)
+                    created += 1
             except Exception as e:  # noqa: BLE001 — сообщаем построчно, импорт не прерываем
                 errors.append(f"строка {i}: {e}")
-        return Response({"created": created, "skipped": skipped, "errors": errors[:20]})
+        return Response({"created": created, "updated": updated,
+                         "skipped": skipped, "errors": errors[:20]})
