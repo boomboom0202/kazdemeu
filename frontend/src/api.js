@@ -55,9 +55,22 @@ api.interceptors.response.use(
   }
 )
 
-// Права по разделам приходят из /me/ — прячем меню, колонки и кнопки
-export const can = (user, section) => !!user?.perms?.[section]?.read
-export const canEdit = (user, section) => !!user?.perms?.[section]?.write
+// Права приходят из /me/ по всем ключам: и разделам («warehouse»), и их
+// частям («warehouse.batches»). Точечное правило уже учтено на сервере —
+// здесь только читаем итог.
+export const can = (user, key) => !!user?.perms?.[key]?.read
+export const canEdit = (user, key) => !!user?.perms?.[key]?.write
+
+// Виден ли раздел вообще: сам раздел или хотя бы одна его часть.
+// Нужно для меню и вкладок — человеку могли выдать одну вкладку склада,
+// не открывая склад целиком.
+export const canAny = (user, section) => {
+  const perms = user?.perms
+  if (!perms) return false
+  if (perms[section]?.read) return true
+  const prefix = section + '.'
+  return Object.keys(perms).some(k => k.startsWith(prefix) && perms[k].read)
+}
 
 export const fmt = (n) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })
 export const fmtD = (n) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })

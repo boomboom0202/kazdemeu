@@ -279,3 +279,5 @@ img, svg, video { max-width: 100%; height: auto; }
   font-size: 13.5px; color: var(--ink-soft);
 }
 .ro-note b { color: var(--ink); }
+
+.hide { display: none !important; }

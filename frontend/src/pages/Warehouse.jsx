@@ -1,12 +1,26 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError, canEdit} from '../api'
+import { api, fmt, fmtD, apiError, can, canEdit } from '../api'
 
 const PO_ST = { draft: 'Черновик', sent: 'Отправлена', received: 'Получена', cancelled: 'Отменена' }
 
+// У каждой вкладки свой ключ доступа — право можно выдать или отозвать
+// на одну вкладку, не трогая остальной склад.
+const TABS = [
+  ['materials', 'warehouse.materials', 'Материалы'],
+  ['movements', 'warehouse.movements', 'Движения материалов'],
+  ['suppliers', 'warehouse.suppliers', 'Поставщики'],
+  ['batches', 'warehouse.batches', 'Партии / Приход'],
+  ['purchase', 'warehouse.purchase', 'Заявки на закуп'],
+  ['fg', 'warehouse.fg', 'Готовая продукция'],
+]
+
 export default function Warehouse({ user }) {
-  // склад некоторые роли только читают — тогда прячем всё, что пишет
-  const ro = !canEdit(user, 'warehouse')
-  const [tab, setTab] = useState('materials')
+  const visibleTabs = TABS.filter(([, key]) => can(user, key))
+  // стартовая вкладка — первая доступная: человеку могли выдать одни партии
+  const [tab, setTab] = useState(visibleTabs[0]?.[0] || 'materials')
+  const tabKey = TABS.find(([t]) => t === tab)?.[1] || 'warehouse'
+  // режим чтения вычисляется от активной вкладки, а не от раздела целиком
+  const ro = !canEdit(user, tabKey)
   const [materials, setMaterials] = useState([])
   const [batches, setBatches] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -35,17 +49,22 @@ export default function Warehouse({ user }) {
   const openMovements = (mid) => { setMoveMat(String(mid)); setTab('movements') }
 
   const load = () => {
-    api.get('/materials/?page_size=200').then(r => setMaterials(r.data.results || []))
-    api.get('/material-batches/?page_size=200').then(r => setBatches(r.data.results || []))
-    api.get('/purchase-orders/?page_size=100').then(r => setPos(r.data.results || []))
-    api.get('/finished-goods/?page_size=100').then(r => setFg(r.data.results || []))
+    // грузим только то, на что есть право — иначе закрытая вкладка
+    // сыпала бы отказами при каждом обновлении
+    if (can(user, 'warehouse.materials')) api.get('/materials/?page_size=200').then(r => setMaterials(r.data.results || []))
+    if (can(user, 'warehouse.batches')) api.get('/material-batches/?page_size=200').then(r => setBatches(r.data.results || []))
+    if (can(user, 'warehouse.purchase')) api.get('/purchase-orders/?page_size=100').then(r => setPos(r.data.results || []))
+    if (can(user, 'warehouse.fg')) api.get('/finished-goods/?page_size=100').then(r => setFg(r.data.results || []))
   }
-  const loadSuppliers = () => api.get('/suppliers/?page_size=200').then(r => setSuppliers(r.data.results || []))
+  const loadSuppliers = () => {
+    if (can(user, 'warehouse.suppliers')) api.get('/suppliers/?page_size=200').then(r => setSuppliers(r.data.results || []))
+  }
   useEffect(() => {
     load()
     loadSuppliers()
-    api.get('/products/?page_size=200').then(r => setProducts(r.data.results || []))
-    api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || []))
+    // вспомогательные справочники для форм; молчим, если раздел не выдан
+    if (can(user, 'catalog.products')) api.get('/products/?page_size=200').then(r => setProducts(r.data.results || [])).catch(() => {})
+    if (can(user, 'contracts.contracts')) api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || [])).catch(() => {})
   }, [])
 
   const resetMat = () => { setShowMat(false); setEditMatId(null); setMatForm({ name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' }) }
@@ -121,16 +140,13 @@ export default function Warehouse({ user }) {
     <div className={ro ? 'readonly' : ''}>
       <div className="pagehead">
         <h1>Склад</h1>
-        <button className="btn ghost small" onClick={checkStock}>Проверить остатки (авто-заявка)</button>
+        {canEdit(user, 'warehouse.materials') && <button className="btn ghost small btn-read" onClick={checkStock}>Проверить остатки (авто-заявка)</button>}
       </div>
-      {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Ваша роль видит склад, но не меняет его. За приход и списание отвечает кладовщик.</div>}
+      {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Эта вкладка вам доступна без права изменения.</div>}
       <div className="tabs">
-        <button className={tab === 'materials' ? 'active' : ''} onClick={() => setTab('materials')}>Материалы</button>
-        <button className={tab === 'movements' ? 'active' : ''} onClick={() => setTab('movements')}>Движения материалов</button>
-        <button className={tab === 'suppliers' ? 'active' : ''} onClick={() => setTab('suppliers')}>Поставщики</button>
-        <button className={tab === 'batches' ? 'active' : ''} onClick={() => setTab('batches')}>Партии / Приход</button>
-        <button className={tab === 'purchase' ? 'active' : ''} onClick={() => setTab('purchase')}>Заявки на закуп</button>
-        <button className={tab === 'fg' ? 'active' : ''} onClick={() => setTab('fg')}>Готовая продукция</button>
+        {visibleTabs.map(([t, , label]) => (
+          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label}</button>
+        ))}
       </div>
 
       {tab === 'materials' && (
@@ -173,7 +189,7 @@ export default function Warehouse({ user }) {
                     <td>{m.default_supplier_name || '—'}</td>
                     <td>{m.low_stock ? <span className="pill low">мало</span> : <span className="pill ok">достаточно</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn small ghost btn-read" onClick={() => openMovements(m.id)}>История</button>{' '}
+                      <button className={can(user, 'warehouse.movements') ? 'btn small ghost btn-read' : 'hide'} onClick={() => openMovements(m.id)}>История</button>{' '}
                       <button className="btn small ghost" onClick={() => editMaterial(m)}>Изм.</button>{' '}
                       <button className="btn small ghost" onClick={() => deleteMaterial(m)}>Удл.</button>
                     </td>

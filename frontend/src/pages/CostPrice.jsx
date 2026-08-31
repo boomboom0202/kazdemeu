@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError } from '../api'
+import { api, fmt, fmtD, apiError, can, canEdit } from '../api'
 import { Loader, LoadError } from '../components/Loader'
 
 /**
@@ -7,7 +7,13 @@ import { Loader, LoadError } from '../components/Loader'
  * «Финансов»; здесь они на отдельной странице вместе с настройками
  * распределения и разбором расчёта по каждому изделию.
  */
-export default function CostPrice() {
+export default function CostPrice({ user }) {
+  // три блока страницы — три отдельных права
+  const seeFixed = can(user, 'finance.fixed')
+  const roFixed = !canEdit(user, 'finance.fixed')
+  const seeSettings = can(user, 'finance.settings')
+  const roSettings = !canEdit(user, 'finance.settings')
+  const seeProducts = can(user, 'analytics')
   const [cs, setCs] = useState(null)
   const [fixed, setFixed] = useState([])
   const [cats, setCats] = useState([])
@@ -17,13 +23,14 @@ export default function CostPrice() {
 
   const load = useCallback(() => {
     setFailed(false)
-    Promise.all([
-      api.get('/cost-settings/').then(r => setCs(r.data)),
+    const jobs = []
+    if (seeSettings) jobs.push(api.get('/cost-settings/').then(r => setCs(r.data)))
+    if (seeFixed) jobs.push(
       api.get('/fixed-costs/?page_size=200').then(r => setFixed(r.data.results || [])),
-      api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || [])),
-      api.get('/analytics/products/').then(r => setRows(r.data)),
-    ]).catch(() => setFailed(true))
-  }, [])
+      api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || [])))
+    if (seeProducts) jobs.push(api.get('/analytics/products/').then(r => setRows(r.data)))
+    Promise.all(jobs).catch(() => setFailed(true))
+  }, [seeSettings, seeFixed, seeProducts])
   useEffect(() => { load() }, [load])
 
   const add = async () => {
@@ -47,17 +54,18 @@ export default function CostPrice() {
     load()
   }
 
-  if (failed && !cs) return <LoadError onRetry={load} />
-  if (!cs) return <Loader />
+  const settingsPending = seeSettings && !cs
+  if (failed && settingsPending) return <LoadError onRetry={load} />
+  if (settingsPending) return <Loader />
 
-  const perHour = cs.method === 'per_hour'
+  const perHour = cs ? cs.method === 'per_hour' : true
   const unit = perHour ? 'нормо-час' : 'шт'
 
   return (
     <div>
       <div className="pagehead"><h1>Себестоимость</h1></div>
 
-      <div className="kpi-grid">
+      {cs && <div className="kpi-grid">
         <div className="kpi">
           <div className="v">{fmt(cs.monthly_fixed_total)} ₸</div>
           <div className="l">Постоянные расходы в месяц</div>
@@ -70,9 +78,9 @@ export default function CostPrice() {
           <div className="v">{perHour ? fmt(cs.planned_monthly_hours) : fmt(cs.planned_monthly_units)}</div>
           <div className="l">Плановая база, {perHour ? 'ч/мес' : 'шт/мес'}</div>
         </div>
-      </div>
+      </div>}
 
-      <div className="card stitch">
+      {seeFixed && <div className={roFixed ? 'readonly' : ''}><div className="card stitch">
         <h2>1. Постоянные расходы — вводятся один раз</h2>
         <p className="muted">
           Аренда, оклады АУП, коммуналка, интернет. Вносятся один раз и действуют ежемесячно,
@@ -129,16 +137,16 @@ export default function CostPrice() {
                 <td><button className="btn small ghost" onClick={() => del(f)}>Удл.</button></td>
               </tr>
             ))}
-            <tr>
+            {cs && <tr>
               <td><b>Итого действующих</b></td>
               <td className="num"><b>{fmt(cs.monthly_fixed_total)}</b></td>
               <td colSpan={3} />
-            </tr>
+            </tr>}
           </tbody>
         </table>
-      </div>
+      </div></div>}
 
-      <div className="card stitch">
+      {seeSettings && cs && <div className={roSettings ? 'readonly' : ''}><div className="card stitch">
         <h2>2. Как разносить их по изделиям</h2>
         <p className="muted">
           «На нормо-час» точнее: изделие, которое шьётся дольше, забирает больше накладных.
@@ -174,9 +182,9 @@ export default function CostPrice() {
           {' = '}
           <b>{fmtD(cs.overhead_rate)} ₸ за {unit}</b>
         </div>
-      </div>
+      </div></div>}
 
-      <div className="card" style={{ padding: 0 }}>
+      {seeProducts && <div className="card" style={{ padding: 0 }}>
         <div style={{ padding: '14px 18px 0' }}>
           <h2>3. Что получилось по изделиям</h2>
           <p className="muted">
@@ -218,7 +226,7 @@ export default function CostPrice() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   )
 }

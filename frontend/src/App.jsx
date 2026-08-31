@@ -15,7 +15,7 @@ import Admin from './pages/Admin'
 import Tenders from './pages/Tenders'
 import Notifications from './components/Notifications'
 import { Loader, LoadError } from './components/Loader'
-import { can } from './api'
+import { canAny } from './api'
 
 function Layout({ user, onLogout, children }) {
   // На ширине ≤900px сайдбар превращается в выдвижное меню
@@ -44,13 +44,13 @@ function Layout({ user, onLogout, children }) {
         {/* клик по любому пункту закрывает меню на телефоне */}
         <nav className="nav" onClick={close}>
           <NavLink to="/">Дашборд</NavLink>
-          {can(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
-          {can(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
-          {can(user, 'production') && <NavLink to="/production">Производство / Цех</NavLink>}
-          {can(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
-          {can(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
-          {can(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
-          {can(user, 'analytics') && <NavLink to="/analytics">Аналитика</NavLink>}
+          {canAny(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
+          {canAny(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
+          {canAny(user, 'production') && <NavLink to="/production">Производство / Цех</NavLink>}
+          {canAny(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
+          {canAny(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
+          {canAny(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
+          {canAny(user, 'analytics') && <NavLink to="/analytics">Аналитика</NavLink>}
           <NavLink to="/chat">AI-ассистент</NavLink>
           {user?.role === 'admin' && <NavLink to="/admin">Администрирование</NavLink>}
         </nav>
@@ -116,9 +116,9 @@ export default function App() {
         <Route path="/contracts/:id" element={<ContractDetail user={user} />} />
         <Route path="/production" element={<Production user={user} />} />
         <Route path="/warehouse" element={<Warehouse user={user} />} />
-        <Route path="/finance" element={<Finance />} />
-        <Route path="/cost-price" element={<CostPrice />} />
-        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/finance" element={<Finance user={user} />} />
+        <Route path="/cost-price" element={<CostPrice user={user} />} />
+        <Route path="/analytics" element={<Analytics user={user} />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/login" element={<Navigate to="/" />} />

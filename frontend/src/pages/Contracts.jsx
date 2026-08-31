@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 export default function Contracts({ user }) {
   // суммы и оплату видят только те, кто работает с деньгами
   const showMoney = ['admin', 'director', 'manager', 'accountant'].includes(user?.role)
-  const mayEdit = canEdit(user, 'contracts')
+  const mayEdit = canEdit(user, 'contracts.contracts')
   const [rows, setRows] = useState([])
   const [customers, setCustomers] = useState([])
   const [status, setStatus] = useState('')

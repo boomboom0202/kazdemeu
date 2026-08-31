@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, fmt, canEdit, apiError } from '../api'
+import { api, fmt, canEdit, apiError, can} from '../api'
 import { Link } from 'react-router-dom'
 
 export const TENDER_STATUS = {
@@ -29,7 +29,7 @@ export default function Tenders({ user }) {
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const fileRef = useRef()
-  const mayEdit = canEdit(user, 'tenders')
+  const mayEdit = canEdit(user, 'tenders.tenders')
 
   const load = () => {
     const p = new URLSearchParams({ page_size: '200' })
@@ -40,8 +40,8 @@ export default function Tenders({ user }) {
   }
   useEffect(load, [status, q])
   useEffect(() => {
-    api.get('/platforms/?page_size=100').then(r => setPlatforms(r.data.results || []))
-    api.get('/own-companies/?page_size=100').then(r => setCompanies(r.data.results || []))
+    if (can(user, 'tenders.platforms')) api.get('/platforms/?page_size=100').then(r => setPlatforms(r.data.results || []))
+    if (can(user, 'tenders.companies')) api.get('/own-companies/?page_size=100').then(r => setCompanies(r.data.results || []))
     api.get('/products/?page_size=200').then(r => setProducts(r.data.results || [])).catch(() => {})
   }, [])
 

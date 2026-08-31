@@ -1,12 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api, fmt, CONTRACT_STATUS, apiError, canEdit} from '../api'
+import { api, fmt, CONTRACT_STATUS, apiError, canEdit, can} from '../api'
 import { Loader, LoadError } from '../components/Loader'
 
 const FILE_KINDS = { sketch: 'Эскиз', layout: 'Макет', techcard: 'Техкарта', photo: 'Фото', other: 'Другое' }
 
 export default function ContractDetail({ user }) {
-  const ro = !canEdit(user, 'contracts')
+  const ro = !canEdit(user, 'contracts.contracts')
+  const roSched = !canEdit(user, 'contracts.schedule')
+  const roFiles = !canEdit(user, 'contracts.files')
+  const roComments = !canEdit(user, 'contracts.comments')
+  const seeSched = can(user, 'contracts.schedule')
+  const seeFiles = can(user, 'contracts.files')
+  const seeComments = can(user, 'contracts.comments')
   const { id } = useParams()
   const [c, setC] = useState(null)
   const [tab, setTab] = useState('payments')
@@ -96,13 +102,13 @@ export default function ContractDetail({ user }) {
       </div>
 
       <div className="tabs">
-        <button className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>График платежей ({c.payment_schedule.length})</button>
-        <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>Файлы ({c.files.length})</button>
-        <button className={tab === 'comments' ? 'active' : ''} onClick={() => setTab('comments')}>Комментарии ({c.comments.length})</button>
+        {seeSched && <button className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>График платежей ({c.payment_schedule.length})</button>}
+        {seeFiles && <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>Файлы ({c.files.length})</button>}
+        {seeComments && <button className={tab === 'comments' ? 'active' : ''} onClick={() => setTab('comments')}>Комментарии ({c.comments.length})</button>}
       </div>
 
-      {tab === 'payments' && (
-        <div className="card">
+      {seeSched && tab === 'payments' && (
+        <div className={roSched ? 'card readonly' : 'card'}>
           <table>
             <thead><tr><th>Срок оплаты</th><th className="num">Сумма</th><th className="num">Оплачено</th><th>Дата оплаты</th><th>Примечание</th><th /><th /></tr></thead>
             <tbody>
@@ -128,8 +134,8 @@ export default function ContractDetail({ user }) {
         </div>
       )}
 
-      {tab === 'files' && (
-        <div className="card">
+      {seeFiles && tab === 'files' && (
+        <div className={roFiles ? 'card readonly' : 'card'}>
           <table>
             <thead><tr><th>Тип</th><th>Название</th><th>Ссылка</th><th>Кто загрузил</th><th>Когда</th><th /></tr></thead>
             <tbody>
@@ -158,8 +164,8 @@ export default function ContractDetail({ user }) {
         </div>
       )}
 
-      {tab === 'comments' && (
-        <div className="card">
+      {seeComments && tab === 'comments' && (
+        <div className={roComments ? 'card readonly' : 'card'}>
           <div className="formrow">
             <div style={{ flex: 3 }}><textarea rows={2} placeholder="Написать комментарий..." value={comment} onChange={e => setComment(e.target.value)} /></div>
             <div style={{ flex: 1, alignSelf: 'center' }}>

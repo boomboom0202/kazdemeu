@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError, canEdit} from '../api'
+import { api, fmt, fmtD, apiError, canEdit, can} from '../api'
 
 const PO_STATUS = { planned: 'Запланирован', in_progress: 'В работе', done: 'Завершён', cancelled: 'Отменён' }
 
@@ -8,14 +8,23 @@ export default function Production({ user }) {
   // это каталог, производственные заказы — производство. Кладовщик и цех
   // могут вести заказы, но не менять изделия, поэтому флага на всю
   // страницу мало.
-  const roCatalog = !canEdit(user, 'catalog')
-  const roProd = !canEdit(user, 'production')
+  const roOrders = !canEdit(user, 'production.orders')
+  const roProducts = !canEdit(user, 'catalog.products')
+  const roStages = !canEdit(user, 'catalog.stages')
+  const roBom = !canEdit(user, 'catalog.bom')
+  const roRoutes = !canEdit(user, 'catalog.routes')
+  // видимость вкладок — по чтению их ключей
+  const seeOrders = can(user, 'production.orders')
+  const seeProducts = can(user, 'catalog.products')
+  const seeStages = can(user, 'catalog.stages')
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
   const [materials, setMaterials] = useState([])
   const [contracts, setContracts] = useState([])
   const [users, setUsers] = useState([])
-  const [tab, setTab] = useState('orders')
+  const [tab, setTab] = useState(
+    can(user, 'production.orders') ? 'orders'
+      : can(user, 'catalog.products') ? 'products' : 'stages')
   const [form, setForm] = useState({ number: '', product: '', qty: '', contract: '' })
   const [detail, setDetail] = useState(null) // product detail with QR/BOM
   const [routeForm, setRouteForm] = useState({ template: '', norm_hours: '' })
@@ -152,14 +161,14 @@ export default function Production({ user }) {
     <div>
       <div className="pagehead"><h1>Производство / Швейный цех</h1></div>
       <div className="tabs">
-        <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>Производственные заказы</button>
-        <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>Изделия / BOM</button>
-        <button className={tab === 'stages' ? 'active' : ''} onClick={() => setTab('stages')}>Этапы цеха (конструктор)</button>
+        {seeOrders && <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>Производственные заказы</button>}
+        {seeProducts && <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>Изделия / BOM</button>}
+        {seeStages && <button className={tab === 'stages' ? 'active' : ''} onClick={() => setTab('stages')}>Этапы цеха (конструктор)</button>}
       </div>
 
       {tab === 'stages' && (
-        <div className={roCatalog ? 'readonly' : ''}>
-          {roCatalog && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
+        <div className={roStages ? 'readonly' : ''}>
+          {roStages && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
           <div className="card stitch">
             <h2>Конструктор этапов производства</h2>
             <p className="muted">Технолог собирает маршрут цеха с нуля: этапы, их порядок и нормы времени.
@@ -194,8 +203,8 @@ export default function Production({ user }) {
       )}
 
       {tab === 'orders' && (
-        <div className={roProd ? 'readonly' : ''}>
-          {roProd && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Запускать заказы и отмечать этапы может цех, кладовщик или технолог.</div>}
+        <div className={roOrders ? 'readonly' : ''}>
+          {roOrders && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Запускать заказы и отмечать этапы может цех, кладовщик или технолог.</div>}
           <div className="card stitch">
             <h2>Новый производственный заказ</h2>
             <div className="formrow">
@@ -257,8 +266,8 @@ export default function Production({ user }) {
       )}
 
       {tab === 'products' && (
-        <div className={roCatalog ? 'readonly' : ''}>
-          {roCatalog && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
+        <div className={roProducts ? 'readonly' : ''}>
+          {roProducts && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Изделия и этапы настраивает технолог.</div>}
           <div className="pagehead" style={{ marginTop: 0 }}>
             <span className="muted">Справочник изделий. Себестоимость и маржа считаются автоматически из BOM и цен материалов.</span>
             <button className="btn small" onClick={() => showProd ? resetProd() : setShowProd(true)}>{showProd ? 'Закрыть' : '+ Новое изделие'}</button>
@@ -325,6 +334,7 @@ export default function Production({ user }) {
                     Материалы: <b>{fmt(detail.material_cost)} ₸</b> · Труд: <b>{fmt(detail.labor_cost)} ₸</b> · Накладные: <b>{fmt(detail.overhead_cost)} ₸</b><br />
                     Себестоимость: <b>{fmt(detail.cost_price)} ₸</b> → Цена: <b>{fmt(detail.base_price)} ₸</b> (маржа {detail.margin_percent.toFixed(1)}%)
                   </p>
+                  <div className={roBom ? 'readonly' : ''}>
                   <h2 style={{ marginTop: 12 }}>Спецификация (BOM) — на 1 шт.</h2>
                   <table>
                     <thead><tr><th>Материал</th><th className="num">Норма</th><th className="num">Цена</th><th /></tr></thead>
@@ -344,7 +354,9 @@ export default function Production({ user }) {
                     <div><label className="f">Норма на 1 шт.</label><input type="number" step="0.001" value={bomForm.qty} onChange={e => setBomForm({ ...bomForm, qty: e.target.value })} /></div>
                     <div style={{ alignSelf: 'flex-end' }}><button className="btn small" onClick={addBom} disabled={!bomForm.material || !bomForm.qty}>+ В состав</button></div>
                   </div>
+                  </div>
 
+                  <div className={roRoutes ? 'readonly' : ''}>
                   <h2 style={{ marginTop: 18 }}>Маршрут по цеху</h2>
                   <p className="muted">Через какие этапы проходит именно это изделие. Пока маршрут
                     пуст, заказы собираются по общему справочнику — одинаково для всех изделий.</p>
@@ -390,6 +402,7 @@ export default function Production({ user }) {
                       {(detail.route || []).length === 0 &&
                         <button className="btn small ghost" onClick={fillRoute}>Взять стандартный</button>}
                     </div>
+                  </div>
                   </div>
                 </div>
               ) : <div className="card muted">Выберите изделие — откроются BOM, себестоимость и QR-код.</div>}

@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, fmt, apiError } from '../api'
+import { api, fmt, apiError, can, canEdit} from '../api'
 import { Loader, LoadError } from '../components/Loader'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
 import { useIsMobile } from '../useIsMobile'
 
 const COLORS = ['#2e4a8f', '#d97b29', '#1d7a4f', '#b8860b', '#7a5195', '#b03030']
 
-export default function Finance() {
+export default function Finance({ user }) {
+  // страница обслуживает два ключа: движение денег и отчёты —
+  // их могли выдать по отдельности
+  const seeEntries = can(user, 'finance.entries')
+  const roEntries = !canEdit(user, 'finance.entries')
+  const seeReports = can(user, 'finance.reports')
   const isMobile = useIsMobile()
   const [cf, setCf] = useState(null)
   const [pnl, setPnl] = useState(null)
@@ -21,21 +26,25 @@ export default function Finance() {
   const [editCatId, setEditCatId] = useState(null)
   const [catForm, setCatForm] = useState({ name: '', kind: 'variable' })
   const load = () => {
-    // Раньше отвалившийся отчёт оставлял состояние null, и страница
-    // отдавала пустой экран без объяснения.
     setFailed(false)
-    Promise.all([
+    const jobs = []
+    // отчёты и движение денег — разные права, грузим только выданное
+    if (seeReports) jobs.push(
       api.get('/reports/cashflow/').then(r => setCf(r.data)),
       api.get('/reports/pnl/').then(r => setPnl(r.data)),
-      api.get('/reports/forecast/').then(r => setForecast(r.data)),
-      api.get('/cash-entries/?page_size=30').then(r => setEntries(r.data.results || [])),
-    ]).catch(() => setFailed(true))
+      api.get('/reports/forecast/').then(r => setForecast(r.data)))
+    if (seeEntries) jobs.push(
+      api.get('/cash-entries/?page_size=30').then(r => setEntries(r.data.results || [])))
+    Promise.all(jobs).catch(() => setFailed(true))
   }
-  const loadCats = () => api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || []))
+  const loadCats = () => {
+    if (seeEntries) api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || []))
+  }
   useEffect(() => {
     load()
     loadCats()
-    api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || []))
+    if (can(user, 'contracts.contracts'))
+      api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || [])).catch(() => {})
   }, [])
 
   const add = async () => {
@@ -65,8 +74,9 @@ export default function Finance() {
     catch (e) { alert(apiError(e, 'Не удалось удалить')) }
   }
 
-  if (failed && !(cf && pnl && forecast)) return <LoadError onRetry={load} />
-  if (!cf || !pnl || !forecast) return <Loader />
+  const reportsPending = seeReports && !(cf && pnl && forecast)
+  if (failed && reportsPending) return <LoadError onRetry={load} />
+  if (reportsPending) return <Loader />
 
   return (
     <div>
@@ -74,7 +84,7 @@ export default function Finance() {
         <h1>Финансы</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link className="btn ghost small" to="/cost-price">Себестоимость и постоянные расходы</Link>
-          <button className="btn ghost small" onClick={() => setShowCat(s => !s)}>+ Категория расхода</button>
+          {canEdit(user, 'finance.entries') && <button className="btn ghost small" onClick={() => setShowCat(s => !s)}>+ Категория расхода</button>}
         </div>
       </div>
 
@@ -110,6 +120,7 @@ export default function Finance() {
           <p className="muted">Категории (аренда, зарплата, материалы…) нужны для структуры расходов в ОПиУ.</p>
         </div>
       )}
+      {seeReports && <>
       <div className="kpi-grid">
         <div className={`kpi ${cf.balance >= 0 ? 'good' : 'warn'}`}><div className="v">{fmt(cf.balance)} ₸</div><div className="l">Остаток в кассе</div></div>
         <div className="kpi"><div className="v">{fmt(pnl.income)} ₸</div><div className="l">Доход (всего)</div></div>
@@ -173,6 +184,10 @@ export default function Finance() {
         </table>
       </div>
 
+      </>}
+
+      {seeEntries && <div className={roEntries ? 'readonly' : ''}>
+      {roEntries && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Движение денег доступно вам без права изменения.</div>}
       <div className="card stitch">
         <h2>Новая операция</h2>
         <div className="formrow">
@@ -205,6 +220,7 @@ export default function Finance() {
           </tbody>
         </table>
       </div>
+      </div>}
     </div>
   )
 }
