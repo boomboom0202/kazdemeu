@@ -38,7 +38,8 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
       # Том, поэтому загруженные файлы переживают перезапуск
       DJANGO_MEDIA_ROOT: /app/backend/media
-      SEED_DEMO: "1"
+      # Демо-данные выключаются в .env при вводе в эксплуатацию
+      SEED_DEMO: ${SEED_DEMO:-0}
       WEB_CONCURRENCY: "4"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PORT: "8000"
