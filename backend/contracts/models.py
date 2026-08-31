@@ -50,6 +50,24 @@ class Contract(models.Model):
     def __str__(self):
         return f"№{self.number} — {self.title}"
 
+    def transition_error(self, new_status):
+        """Причина, по которой переход запрещён, или None, если он допустим.
+
+        Правило одно на всю систему: и для кнопок статуса, и для обычного
+        сохранения договора. Раньше цепочка проверялась только в set_status,
+        а PATCH договора менял статус куда угодно — договор можно было
+        закрыть, минуя согласование и работу.
+        """
+        if new_status == self.status:
+            return None
+        labels = dict(self.Status.choices)
+        allowed = self.TRANSITIONS.get(self.status, set())
+        if new_status in allowed:
+            return None
+        can_go = ", ".join(f"«{labels.get(a, a)}»" for a in sorted(allowed)) or "никуда"
+        return (f"Из статуса «{labels.get(self.status, self.status)}» нельзя перейти "
+                f"в «{labels.get(new_status, new_status)}». Доступные переходы: {can_go}.")
+
     @property
     def paid_amount(self):
         return sum(p.paid_amount for p in self.payment_schedule.all())

@@ -40,15 +40,12 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
         """Смена статуса строго по цепочке: new → negotiation → in_progress → closed/cancelled."""
         contract = self.get_object()
         new_status = request.data.get("status")
-        allowed = Contract.TRANSITIONS.get(contract.status, set())
-        if new_status not in allowed:
-            labels = dict(Contract.Status.choices)
-            can_go = ", ".join(f"«{labels.get(a, a)}»" for a in sorted(allowed)) or "ничего"
-            return Response(
-                {"detail": f"Из статуса «{labels.get(contract.status, contract.status)}» "
-                           f"нельзя перейти в «{labels.get(new_status, new_status)}». "
-                           f"Доступные переходы: {can_go}."},
-                status=status.HTTP_400_BAD_REQUEST)
+        if new_status not in dict(Contract.Status.choices):
+            return Response({"detail": "Неизвестный статус договора."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        err = contract.transition_error(new_status)
+        if err:
+            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
         contract.status = new_status
         contract.save(update_fields=["status", "updated_at"])
         return Response(ContractDetailSerializer(contract).data)

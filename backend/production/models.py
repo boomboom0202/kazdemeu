@@ -186,6 +186,24 @@ class ProductionOrder(models.Model):
     def __str__(self):
         return f"ПЗ №{self.number}: {self.product.name} × {self.qty}"
 
+    @classmethod
+    def next_number(cls):
+        """Следующий свободный номер вида ПЗ-2026-001.
+
+        Номер уникален, поэтому придумывать его вручную — лишний повод
+        ошибиться при запуске заказа. Свой номер по-прежнему можно ввести.
+        """
+        from django.utils import timezone
+        year = timezone.localdate().year
+        prefix = f"ПЗ-{year}-"
+        used = cls.objects.filter(number__startswith=prefix).values_list("number", flat=True)
+        top = 0
+        for n in used:
+            tail = n[len(prefix):]
+            if tail.isdigit():
+                top = max(top, int(tail))
+        return f"{prefix}{top + 1:03d}"
+
     def create_stages(self):
         """Этапы заказа: сначала маршрут изделия, при его отсутствии — общий справочник."""
         ensure_default_stages()

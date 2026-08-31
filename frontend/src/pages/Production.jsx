@@ -208,7 +208,9 @@ export default function Production({ user }) {
           <div className="card stitch">
             <h2>Новый производственный заказ</h2>
             <div className="formrow">
-              <div><label className="f">Номер</label><input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} /></div>
+              <div><label className="f">Номер <span className="muted">(можно не заполнять)</span></label>
+                <input value={form.number} placeholder="присвоится сам"
+                  onChange={e => setForm({ ...form, number: e.target.value })} /></div>
               <div><label className="f">Изделие</label>
                 <select value={form.product} onChange={e => setForm({ ...form, product: e.target.value })}>
                   <option value="">—</option>
@@ -220,7 +222,7 @@ export default function Production({ user }) {
                   <option value="">—</option>
                   {contracts.map(c => <option key={c.id} value={c.id}>{c.number}</option>)}
                 </select></div>
-              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={create} disabled={!form.number || !form.product || !form.qty}>Создать</button></div>
+              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={create} disabled={!form.product || !form.qty}>Создать</button></div>
             </div>
             <p className="muted">Запуск заказа автоматически списывает материалы по BOM; завершение — приходует готовую продукцию на склад.</p>
           </div>

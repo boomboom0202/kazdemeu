@@ -5,6 +5,9 @@ cd /app/backend
 echo ">> Миграции"
 python manage.py migrate --noinput
 
+# Страховка от блокировки: без администратора в систему не войти вообще
+python manage.py bootstrap_admin
+
 # seed_demo идемпотентен (get_or_create) — введённые данные не затираются
 if [ "$SEED_DEMO" = "1" ]; then
   echo ">> Демо-данные"

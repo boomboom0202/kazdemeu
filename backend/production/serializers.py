@@ -93,7 +93,20 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     contract_number = serializers.CharField(source="contract.number", read_only=True, default=None)
     stages = ProductionStageSerializer(many=True, read_only=True)
+    number = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     class Meta:
         model = ProductionOrder
         fields = "__all__"
+
+    def validate_number(self, value):
+        value = (value or "").strip()
+        if value and ProductionOrder.objects.filter(number=value).exclude(
+                pk=getattr(self.instance, "pk", None)).exists():
+            raise serializers.ValidationError("Заказ с таким номером уже есть.")
+        return value
+
+    def create(self, validated_data):
+        if not validated_data.get("number"):
+            validated_data["number"] = ProductionOrder.next_number()
+        return super().create(validated_data)

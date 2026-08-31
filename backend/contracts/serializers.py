@@ -45,6 +45,17 @@ class ContractSerializer(serializers.ModelSerializer):
         model = Contract
         fields = "__all__"
 
+    def validate_status(self, value):
+        # При заведении договора статус любой: в систему вносят и те, что
+        # давно в работе. А вот у существующего договора статус движется
+        # только по цепочке — тем же правилом, что и кнопки в карточке.
+        if self.instance is None:
+            return value
+        err = self.instance.transition_error(value)
+        if err:
+            raise serializers.ValidationError(err)
+        return value
+
 
 class ContractDetailSerializer(ContractSerializer):
     payment_schedule = PaymentScheduleItemSerializer(many=True, read_only=True)
