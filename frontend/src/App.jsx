@@ -46,7 +46,12 @@ function Layout({ user, onLogout, children }) {
           <NavLink to="/">Дашборд</NavLink>
           {canAny(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
           {canAny(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
-          {canAny(user, 'production') && <NavLink to="/production">Производство / Цех</NavLink>}
+          {/* На этой странице живут два раздела прав: заказы — это «производство»,
+              а изделия, состав, маршруты и конструктор этапов — «каталог».
+              Пункт нужен, если открыт хотя бы один из них: иначе выданное
+              точечное право на изделия некуда нажать. */}
+          {(canAny(user, 'production') || canAny(user, 'catalog')) &&
+            <NavLink to="/production">Производство / Цех</NavLink>}
           {canAny(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
           {canAny(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
           {canAny(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
