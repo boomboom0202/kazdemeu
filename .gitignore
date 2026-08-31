@@ -23,3 +23,8 @@ frontend/dist/
 
 # Сгенерированный ключ для вставки в Render — не коммитить
 SECRET-KEY-*.txt
+
+# Промежуточные файлы сборки инструкций и папки со снимками экрана
+docs/pdf/manual-*.html
+docs/pdf/all/
+docs/pdf/golive/
