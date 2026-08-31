@@ -16,6 +16,7 @@ EXPORT_HEADERS = ["number", "customer", "title", "status", "amount",
 
 
 class CustomerViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "contracts.customers"
     queryset = Customer.objects.all().order_by("name")
     serializer_class = CustomerSerializer
     permission_classes = [RoleSectionPermission]
@@ -24,6 +25,7 @@ class CustomerViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "contracts.contracts"
     queryset = Contract.objects.select_related("customer", "manager")
     permission_classes = [RoleSectionPermission]
     section = "contracts"
@@ -113,6 +115,7 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class PaymentScheduleViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "contracts.schedule"
     queryset = PaymentScheduleItem.objects.select_related("contract")
     serializer_class = PaymentScheduleItemSerializer
     permission_classes = [RoleSectionPermission]
@@ -141,6 +144,7 @@ class PaymentScheduleViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class ContractFileViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "contracts.files"
     queryset = ContractFile.objects.all()
     serializer_class = ContractFileSerializer
     permission_classes = [RoleSectionPermission]
@@ -153,6 +157,7 @@ class ContractFileViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class CommentViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "contracts.comments"
     queryset = Comment.objects.select_related("author", "contract")
     serializer_class = CommentSerializer
     permission_classes = [RoleSectionPermission]

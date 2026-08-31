@@ -24,6 +24,7 @@ class ProdBase(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class ProductViewSet(CatalogBase):
+    access_key = "catalog.products"
     queryset = Product.objects.all().order_by("name")
     search_fields = ["name", "sku"]
 
@@ -87,24 +88,28 @@ class ProductViewSet(CatalogBase):
 
 class StageTemplateViewSet(CatalogBase):
     """Конструктор этапов цеха: технолог создаёт/удаляет/переупорядочивает этапы."""
+    access_key = "catalog.stages"
     queryset = StageTemplate.objects.all()
     serializer_class = StageTemplateSerializer
 
 
 class ProductRouteStageViewSet(CatalogBase):
     """Маршрут изделия: какие этапы и в каком порядке оно проходит."""
+    access_key = "catalog.routes"
     queryset = ProductRouteStage.objects.select_related("product", "template")
     serializer_class = ProductRouteStageSerializer
     filterset_fields = ["product"]
 
 
 class BOMItemViewSet(CatalogBase):
+    access_key = "catalog.bom"
     queryset = BOMItem.objects.select_related("product", "material")
     serializer_class = BOMItemSerializer
     filterset_fields = ["product"]
 
 
 class PriceListViewSet(CatalogBase):
+    access_key = "catalog.pricelists"
     queryset = PriceList.objects.prefetch_related("items")
     serializer_class = PriceListSerializer
     filterset_fields = ["customer"]
@@ -117,6 +122,7 @@ class PriceListItemViewSet(CatalogBase):
 
 
 class ProductionOrderViewSet(ProdBase):
+    access_key = "production.orders"
     queryset = ProductionOrder.objects.select_related("product", "contract").prefetch_related("stages")
     serializer_class = ProductionOrderSerializer
     filterset_fields = ["status", "contract", "product"]
@@ -168,6 +174,7 @@ class ProductionOrderViewSet(ProdBase):
 
 
 class ProductionStageViewSet(ProdBase):
+    access_key = "production.stages"
     queryset = ProductionStage.objects.select_related("order", "assignee")
     serializer_class = ProductionStageSerializer
     filterset_fields = ["order", "stage", "status", "assignee"]

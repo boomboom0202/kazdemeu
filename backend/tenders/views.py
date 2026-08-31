@@ -18,16 +18,19 @@ class TenderBase(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class PlatformViewSet(TenderBase):
+    access_key = "tenders.platforms"
     queryset = Platform.objects.all()
     serializer_class = PlatformSerializer
 
 
 class OwnCompanyViewSet(TenderBase):
+    access_key = "tenders.companies"
     queryset = OwnCompany.objects.all()
     serializer_class = OwnCompanySerializer
 
 
 class TenderViewSet(TenderBase):
+    access_key = "tenders.tenders"
     queryset = Tender.objects.select_related("platform", "own_company", "product",
                                              "manager", "contract")
     serializer_class = TenderSerializer

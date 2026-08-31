@@ -16,12 +16,14 @@ class Base(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class SupplierViewSet(Base):
+    access_key = "warehouse.suppliers"
     queryset = Supplier.objects.all().order_by("name")
     serializer_class = SupplierSerializer
     search_fields = ["name"]
 
 
 class MaterialViewSet(Base):
+    access_key = "warehouse.materials"
     queryset = Material.objects.select_related("default_supplier")
     serializer_class = MaterialSerializer
     search_fields = ["name", "sku"]
@@ -35,6 +37,7 @@ class MaterialViewSet(Base):
 
 
 class MaterialBatchViewSet(Base):
+    access_key = "warehouse.batches"
     queryset = MaterialBatch.objects.select_related("material", "supplier")
     serializer_class = MaterialBatchSerializer
     filterset_fields = ["material", "supplier"]
@@ -59,6 +62,7 @@ class MaterialBatchViewSet(Base):
 
 
 class StockMovementViewSet(Base):
+    access_key = "warehouse.movements"
     queryset = StockMovement.objects.select_related("material")
     serializer_class = StockMovementSerializer
     filterset_fields = ["material", "reason"]
@@ -68,12 +72,14 @@ class StockMovementViewSet(Base):
 
 
 class FinishedGoodsViewSet(Base):
+    access_key = "warehouse.fg"
     queryset = FinishedGoodsMovement.objects.select_related("product")
     serializer_class = FinishedGoodsMovementSerializer
     filterset_fields = ["product", "contract"]
 
 
 class PurchaseOrderViewSet(Base):
+    access_key = "warehouse.purchase"
     queryset = PurchaseOrder.objects.select_related("supplier", "material")
     serializer_class = PurchaseOrderSerializer
     filterset_fields = ["status", "supplier", "auto_created"]

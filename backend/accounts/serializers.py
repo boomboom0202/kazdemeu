@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, AuditLog, Notification
+from .models import UserAccess, User, AuditLog, Notification
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -12,9 +12,13 @@ class UserSerializer(serializers.ModelSerializer):
                   "role", "role_display", "is_active", "perms"]
 
     def get_perms(self, obj):
-        """Права по разделам — фронтенд прячет меню, колонки и кнопки."""
-        from .permissions import SECTIONS, can_read, can_write
-        return {s: {"read": can_read(obj, s), "write": can_write(obj, s)} for s in SECTIONS}
+        """Итоговые права — фронтенд прячет по ним меню, вкладки и кнопки.
+
+        Отдаются и разделы целиком, и их части, поэтому интерфейс может
+        закрыть отдельную вкладку, не закрывая весь раздел.
+        """
+        from .permissions import effective_perms
+        return effective_perms(obj)
 
 
 class UserCreateSerializer(UserSerializer):
@@ -43,3 +47,18 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = "__all__"
+
+class UserAccessSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    level_display = serializers.CharField(source="get_level_display", read_only=True)
+
+    class Meta:
+        model = UserAccess
+        fields = ["id", "user", "username", "key", "level", "level_display", "note", "created_at"]
+
+    def validate_key(self, value):
+        from .permissions import ALL_KEYS
+        if value not in ALL_KEYS:
+            raise serializers.ValidationError(
+                "Неизвестный ключ доступа. Допустимые перечислены в /api/access-keys/.")
+        return value

@@ -3,9 +3,10 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.db.models import Q, F
-from .models import User, AuditLog, Notification
+from .models import User, AuditLog, Notification, UserAccess
 from .serializers import (UserSerializer, UserCreateSerializer,
-                          AuditLogSerializer, NotificationSerializer)
+                          AuditLogSerializer, NotificationSerializer,
+                          UserAccessSerializer)
 
 
 class IsAdminRole(IsAuthenticated):
@@ -123,3 +124,25 @@ class NotificationViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin,
             if fresh:
                 Notification.objects.bulk_create(fresh)
         return Response({"status": "ok"})
+
+class UserAccessViewSet(viewsets.ModelViewSet):
+    """Точечные права. Раздаёт и отзывает только администратор."""
+    queryset = UserAccess.objects.select_related("user")
+    serializer_class = UserAccessSerializer
+    permission_classes = [IsAdminRole]
+    filterset_fields = ["user", "key", "level"]
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminRole])
+def access_keys(request):
+    """Справочник ключей: разделы и их части, с человеческими названиями."""
+    from .permissions import SECTIONS, AREAS
+    titles = {"tenders": "Тендеры", "contracts": "Договоры", "catalog": "Изделия и каталог",
+              "production": "Производство", "warehouse": "Склад", "finance": "Финансы",
+              "analytics": "Аналитика"}
+    return Response([
+        {"section": s, "title": titles.get(s, s),
+         "areas": [{"key": f"{s}.{a}", "title": t} for a, t in AREAS.get(s, {}).items()]}
+        for s in SECTIONS
+    ])

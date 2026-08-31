@@ -22,6 +22,7 @@ class ExpenseCategoryViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 class CashEntryViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
+    access_key = "finance.entries"
     queryset = CashEntry.objects.select_related("category", "contract")
     serializer_class = CashEntrySerializer
     permission_classes = [RoleSectionPermission]
@@ -31,6 +32,7 @@ class CashEntryViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 class FixedCostViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
     """Постоянные расходы — вводятся один раз, действуют ежемесячно."""
+    access_key = "finance.fixed"
     queryset = FixedCost.objects.select_related("category")
     serializer_class = FixedCostSerializer
     permission_classes = [RoleSectionPermission]
@@ -39,7 +41,7 @@ class FixedCostViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
 
 @api_view(["GET", "PATCH"])
-@permission_classes([section_read("finance")])
+@permission_classes([section_read("finance.settings")])
 def cost_settings(request):
     """Настройки расчёта себестоимости (одна запись).
 
@@ -79,7 +81,7 @@ def _month_series(qs):
 
 
 @api_view(["GET"])
-@permission_classes([section_read("finance")])
+@permission_classes([section_read("finance.reports")])
 def cashflow_report(request):
     """ДДС/ОДДС: помесячно приход/расход/чистый поток/остаток."""
     return Response({
@@ -91,7 +93,7 @@ def cashflow_report(request):
 
 
 @api_view(["GET"])
-@permission_classes([section_read("finance")])
+@permission_classes([section_read("finance.reports")])
 def pnl_report(request):
     """ОПиУ: доходы/расходы по категориям, чистая прибыль, рентабельность,
     структура расходов и деление постоянные/переменные."""
@@ -115,7 +117,7 @@ def pnl_report(request):
 
 
 @api_view(["GET"])
-@permission_classes([section_read("finance")])
+@permission_classes([section_read("finance.reports")])
 def forecast_report(request):
     """Потенциальные поступления (воронка): взвешенные по стадии договора +
     неоплаченный остаток графика платежей."""

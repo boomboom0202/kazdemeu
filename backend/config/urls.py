@@ -19,6 +19,7 @@ router = DefaultRouter()
 # accounts
 router.register("users", acc.UserViewSet)
 router.register("audit-log", acc.AuditLogViewSet)
+router.register("user-access", acc.UserAccessViewSet)
 router.register("notifications", acc.NotificationViewSet, basename="notifications")
 # contracts
 router.register("customers", con.CustomerViewSet)
@@ -56,6 +57,7 @@ urlpatterns = [
     path("api/auth/token/", TokenObtainPairView.as_view()),
     path("api/auth/refresh/", TokenRefreshView.as_view()),
     path("api/me/", acc.me),
+    path("api/access-keys/", acc.access_keys),
     path("api/cost-settings/", fin.cost_settings),
     path("api/reports/cashflow/", fin.cashflow_report),
     path("api/reports/pnl/", fin.pnl_report),

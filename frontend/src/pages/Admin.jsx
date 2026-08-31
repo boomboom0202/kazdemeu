@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
+import AccessRules from '../components/AccessRules'
 
 const ROLES = {
   admin: 'Администратор', director: 'Директор', manager: 'Менеджер (тендеры/договоры)',
@@ -30,6 +31,7 @@ export default function Admin() {
       <div className="pagehead"><h1>Администрирование</h1></div>
       <div className="tabs">
         <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Сотрудники / Роли</button>
+        <button className={tab === 'access' ? 'active' : ''} onClick={() => setTab('access')}>Точечные права</button>
         <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}>Журнал действий</button>
       </div>
 
@@ -68,6 +70,8 @@ export default function Admin() {
           </div>
         </>
       )}
+
+      {tab === 'access' && <AccessRules users={users} />}
 
       {tab === 'log' && (
         <div className="card" style={{ padding: 0 }}>
