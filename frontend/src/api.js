@@ -93,6 +93,13 @@ const FIELD_NAMES = {
   base_price: 'Цена продажи', labor_cost: 'Оплата труда', norm_hours: 'Норма времени',
   min_stock: 'Минимальный остаток', code: 'Код', position: 'Порядок',
   username: 'Логин', password: 'Пароль', role: 'Роль', template: 'Этап',
+  overhead_cost: 'Накладные на 1 шт.', default_norm_hours: 'Норма часов',
+  planned_monthly_hours: 'Плановый фонд времени', planned_monthly_units: 'Плановый выпуск',
+  monthly_amount_total: 'Сумма в месяц', batch_no: 'Номер партии',
+  received_at: 'Дата приёмки', direction: 'Тип операции', status: 'Статус',
+  unit: 'Единица измерения', bin_iin: 'БИН/ИИН', phone: 'Телефон',
+  contract: 'Договор', description: 'Описание', note: 'Примечание',
+  first_name: 'Имя', is_active: 'Активен', method: 'Метод распределения',
 }
 
 /**
