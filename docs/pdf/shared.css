@@ -105,3 +105,27 @@ tr:last-child td{border-bottom:0}
   .rule{ margin-bottom:8mm; break-after:avoid; }
   p{ orphans:3; widows:3; }
 }
+
+/* ── Лист Excel ──────────────────────────────────────────────────
+   Показываем, как выглядит заполненный файл: буквы колонок, номера
+   строк, сетка. Собирается из настоящего .xlsx, а не рисуется руками. */
+.xl{overflow-x:auto;margin:0 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.xl table{min-width:0;width:auto;border-collapse:collapse;font-size:12.5px;
+  font-family:'Manrope',system-ui,sans-serif}
+.xl th,.xl td{border:1px solid var(--line-soft);padding:5px 9px;white-space:nowrap;
+  text-align:left;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink)}
+.xl thead th{background:var(--indigo-wash);color:var(--ink-soft);text-align:center;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;border-bottom:1px solid var(--line)}
+.xl tbody th{background:var(--indigo-wash);color:var(--ink-soft);text-align:center;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;width:1%}
+.xl tr:first-child td, .xl .hdr td{font-weight:700;background:var(--line-soft)}
+.xl td.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px}
+.xl td.empty{background:repeating-linear-gradient(45deg,transparent,transparent 5px,
+  var(--line-soft) 5px,var(--line-soft) 6px)}
+.xlcap{font-size:13px;color:var(--ink-soft);margin:0 0 22px;padding-left:12px;
+  border-left:2px dashed var(--thread)}
+@media print{
+  .xl{break-inside:avoid}
+  .xl table{font-size:8.5pt}
+  .xl th,.xl td{padding:3px 6px}
+}

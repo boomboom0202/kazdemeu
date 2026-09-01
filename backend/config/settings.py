@@ -27,6 +27,17 @@ _render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if _render_host:
     CSRF_TRUSTED_ORIGINS.append(f"https://{_render_host}")
 
+if not DEBUG:
+    # Приложение ходит по JWT, но админка Django — по сессионным cookie,
+    # и отдавать их без пометки Secure незачем: снаружи всё равно только https.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    # HSTS выключен по умолчанию: браузер запоминает его надолго, и если
+    # домен когда-нибудь придётся отдать по http, откатить будет нечем.
+    # Включается осознанно: DJANGO_HSTS_SECONDS=31536000
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "0"))
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
