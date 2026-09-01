@@ -1,21 +1,28 @@
 import io
 import base64
 from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.conf import settings
+
+POSITIVE_QTY = [MinValueValidator(Decimal("0.001"))]
+NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
 
 
 class Product(models.Model):
     """Готовое изделие. BOM — состав материалов (норма расхода на 1 шт.)."""
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=64, unique=True)
-    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                     validators=NON_NEGATIVE)
     labor_cost = models.DecimalField("Оплата труда на 1 шт. (переменный)", max_digits=12,
-                                     decimal_places=2, default=0)
+                                     decimal_places=2, default=0, validators=NON_NEGATIVE)
     norm_hours = models.DecimalField("Норма времени на 1 шт., ч", max_digits=8, decimal_places=2,
-                                     default=0, help_text="Для распределения накладных по нормо-часам")
+                                     default=0, validators=NON_NEGATIVE,
+                                     help_text="Для распределения накладных по нормо-часам")
     overhead_cost = models.DecimalField(
         "Накладные на 1 шт. (ручное значение)", max_digits=12, decimal_places=2, default=0,
+        validators=NON_NEGATIVE,
         help_text="Используется только если включено переопределение")
     overhead_override = models.BooleanField(
         "Задать накладные вручную", default=False,
@@ -73,7 +80,8 @@ class BOMItem(models.Model):
     """Спецификация (Bill of Materials): расход материала на 1 изделие."""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="bom_items")
     material = models.ForeignKey("warehouse.Material", on_delete=models.PROTECT)
-    qty = models.DecimalField("Норма на 1 шт.", max_digits=12, decimal_places=3)
+    qty = models.DecimalField("Норма на 1 шт.", max_digits=12, decimal_places=3,
+                              validators=POSITIVE_QTY)
 
     class Meta:
         unique_together = ("product", "material")
@@ -96,7 +104,7 @@ class PriceList(models.Model):
 class PriceListItem(models.Model):
     price_list = models.ForeignKey(PriceList, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    price = models.DecimalField(max_digits=12, decimal_places=2)
+    price = models.DecimalField(max_digits=12, decimal_places=2, validators=NON_NEGATIVE)
 
     class Meta:
         unique_together = ("price_list", "product")
@@ -109,7 +117,8 @@ class StageTemplate(models.Model):
     name = models.CharField("Название этапа", max_length=100)
     position = models.PositiveSmallIntegerField("Порядок", default=0)
     default_norm_hours = models.DecimalField("Норма часов по умолчанию", max_digits=8,
-                                             decimal_places=2, default=0)
+                                             decimal_places=2, default=0,
+                                             validators=NON_NEGATIVE)
     is_active = models.BooleanField("Использовать в новых заказах", default=True)
 
     class Meta:
@@ -146,7 +155,7 @@ class ProductRouteStage(models.Model):
                                  related_name="in_routes", verbose_name="Этап")
     position = models.PositiveSmallIntegerField("Порядок", default=0)
     norm_hours = models.DecimalField("Норма часов на этап", max_digits=8, decimal_places=2,
-                                     default=0,
+                                     default=0, validators=NON_NEGATIVE,
                                      help_text="0 — взять норму из справочника этапов")
 
     class Meta:
@@ -175,7 +184,7 @@ class ProductionOrder(models.Model):
     contract = models.ForeignKey("contracts.Contract", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="production_orders")
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    qty = models.PositiveIntegerField()
+    qty = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNED)
     materials_written_off = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

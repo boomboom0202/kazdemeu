@@ -1,5 +1,12 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.conf import settings
+
+# Количество и деньги не бывают отрицательными. У движений по складу знак
+# осмыслен (плюс — приход, минус — расход), поэтому их это не касается.
+POSITIVE_QTY = [MinValueValidator(Decimal("0.001"))]
+NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
 
 
 class Supplier(models.Model):
@@ -18,7 +25,8 @@ class Material(models.Model):
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=64, unique=True)
     unit = models.CharField(max_length=20, default="м")  # м, кг, шт...
-    min_stock = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    min_stock = models.DecimalField(max_digits=12, decimal_places=3, default=0,
+                                    validators=NON_NEGATIVE)
     default_supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -44,10 +52,13 @@ class Material(models.Model):
 class MaterialBatch(models.Model):
     """Партия: учёт по поставщикам и партиям."""
     material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name="batches")
-    supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.SET_NULL)
+    # История приёмки — учётные данные: от кого принято, по какой цене.
+    # При SET_NULL удаление поставщика молча стирало происхождение партий,
+    # хотя заявки на закуп его уже защищали. Теперь правило одно.
+    supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.PROTECT)
     batch_no = models.CharField(max_length=64, blank=True)
-    qty = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    qty = models.DecimalField(max_digits=12, decimal_places=3, validators=POSITIVE_QTY)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, validators=NON_NEGATIVE)
     received_at = models.DateField()
 
     def __str__(self):
@@ -112,7 +123,7 @@ class PurchaseOrder(models.Model):
 
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
     material = models.ForeignKey(Material, on_delete=models.PROTECT)
-    qty = models.DecimalField(max_digits=12, decimal_places=3)
+    qty = models.DecimalField(max_digits=12, decimal_places=3, validators=POSITIVE_QTY)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     auto_created = models.BooleanField(default=False)
     note = models.CharField(max_length=255, blank=True)

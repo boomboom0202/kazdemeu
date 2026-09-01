@@ -1,5 +1,10 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.conf import settings
+
+POSITIVE_MONEY = [MinValueValidator(Decimal("0.01"))]
+NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
 
 
 class Customer(models.Model):
@@ -35,7 +40,8 @@ class Contract(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="contracts")
     title = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                                 validators=NON_NEGATIVE)
     signed_date = models.DateField(null=True, blank=True)
     deadline = models.DateField(null=True, blank=True, help_text="Срок исполнения")
     specification = models.TextField(blank=True, help_text="Техническая спецификация")
@@ -83,8 +89,9 @@ class PaymentScheduleItem(models.Model):
     """График платежей: когда и сколько должно поступить, и сколько поступило."""
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name="payment_schedule")
     due_date = models.DateField()
-    amount = models.DecimalField(max_digits=14, decimal_places=2)
-    paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE_MONEY)
+    paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                                      validators=NON_NEGATIVE)
     paid_date = models.DateField(null=True, blank=True)
     note = models.CharField(max_length=255, blank=True)
 

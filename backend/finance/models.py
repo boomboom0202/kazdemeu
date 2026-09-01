@@ -1,4 +1,9 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
+
+POSITIVE_MONEY = [MinValueValidator(Decimal("0.01"))]
+NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
 
 
 class ExpenseCategory(models.Model):
@@ -20,7 +25,7 @@ class CashEntry(models.Model):
         OUT = "out", "Расход"
 
     direction = models.CharField(max_length=3, choices=Direction.choices)
-    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE_MONEY)
     date = models.DateField()
     category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL,
                                  help_text="Для расходов: материал, зарплата, аренда...")
@@ -43,7 +48,8 @@ class FixedCost(models.Model):
     Действует ежемесячно, пока не отключён. Участвует в себестоимости
     через распределение, см. CostSettings."""
     name = models.CharField("Наименование", max_length=150)
-    monthly_amount = models.DecimalField("Сумма в месяц, ₸", max_digits=14, decimal_places=2)
+    monthly_amount = models.DecimalField("Сумма в месяц, ₸", max_digits=14, decimal_places=2,
+                                        validators=NON_NEGATIVE)
     category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL)
     is_active = models.BooleanField("Действует", default=True)
     note = models.CharField(max_length=255, blank=True)
@@ -68,9 +74,11 @@ class CostSettings(models.Model):
     method = models.CharField("Метод распределения", max_length=10,
                               choices=Method.choices, default=Method.PER_HOUR)
     planned_monthly_units = models.PositiveIntegerField(
-        "Плановый выпуск, шт/мес", default=1000, help_text="Для метода «на единицу»")
+        "Плановый выпуск, шт/мес", default=1000, validators=[MinValueValidator(1)],
+        help_text="Для метода «на единицу»")
     planned_monthly_hours = models.DecimalField(
         "Плановый фонд рабочего времени, ч/мес", max_digits=10, decimal_places=2, default=1000,
+        validators=[MinValueValidator(Decimal("0.01"))],
         help_text="Для метода «на нормо-час»")
     updated_at = models.DateTimeField(auto_now=True)
 
