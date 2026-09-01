@@ -29,6 +29,9 @@ class Product(models.Model):
         help_text="По умолчанию накладные считаются автоматически из постоянных расходов")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
         return f"{self.name} ({self.sku})"
 
@@ -85,6 +88,7 @@ class BOMItem(models.Model):
 
     class Meta:
         unique_together = ("product", "material")
+        ordering = ["material__name"]
 
     def __str__(self):
         return f"{self.product.sku}: {self.material.sku} × {self.qty}"
@@ -97,6 +101,9 @@ class PriceList(models.Model):
                                  on_delete=models.CASCADE, related_name="price_lists",
                                  help_text="Пусто = общий прайс")
 
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
         return self.name
 
@@ -108,6 +115,7 @@ class PriceListItem(models.Model):
 
     class Meta:
         unique_together = ("price_list", "product")
+        ordering = ["product__name"]
 
 
 class StageTemplate(models.Model):

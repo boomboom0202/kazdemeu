@@ -14,6 +14,9 @@ class ExpenseCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.VARIABLE)
 
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
         return self.name
 

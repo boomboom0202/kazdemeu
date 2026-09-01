@@ -16,6 +16,9 @@ class Supplier(models.Model):
     email = models.EmailField(blank=True)
     note = models.TextField(blank=True)
 
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
         return self.name
 
@@ -29,6 +32,9 @@ class Material(models.Model):
                                     validators=NON_NEGATIVE)
     default_supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
@@ -60,6 +66,9 @@ class MaterialBatch(models.Model):
     qty = models.DecimalField(max_digits=12, decimal_places=3, validators=POSITIVE_QTY)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2, validators=NON_NEGATIVE)
     received_at = models.DateField()
+
+    class Meta:
+        ordering = ["-received_at", "-id"]
 
     def __str__(self):
         return f"{self.material.sku} партия {self.batch_no or self.pk}"
