@@ -29,7 +29,7 @@ export default function Warehouse({ user }) {
   const [products, setProducts] = useState([])
   const [contracts, setContracts] = useState([])
   const [batchForm, setBatchForm] = useState({ material: '', supplier: '', qty: '', unit_price: '', batch_no: '', received_at: new Date().toISOString().slice(0, 10) })
-  const [shipForm, setShipForm] = useState({ product: '', qty: '', contract: '', note: '' })
+  const [shipForm, setShipForm] = useState({ direction: 'out', product: '', qty: '', contract: '', note: '' })
   const [showMat, setShowMat] = useState(false)
   const [editMatId, setEditMatId] = useState(null)
   const [matForm, setMatForm] = useState({ name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' })
@@ -111,15 +111,19 @@ export default function Warehouse({ user }) {
     setBatchForm({ ...batchForm, qty: '', unit_price: '', batch_no: '' }); load()
   }
 
+  // Плюс — приход (внесение остатка при переходе на систему), минус — отгрузка.
   const ship = async () => {
     const qty = Number(shipForm.qty)
     if (!qty || qty <= 0) return
-    await api.post('/finished-goods/', {
-      product: shipForm.product, qty: -qty,
-      contract: shipForm.contract || null,
-      note: shipForm.note || 'Отгрузка клиенту',
-    })
-    setShipForm({ product: '', qty: '', contract: '', note: '' }); load()
+    const income = shipForm.direction === 'in'
+    try {
+      await api.post('/finished-goods/', {
+        product: shipForm.product, qty: income ? qty : -qty,
+        contract: income ? null : (shipForm.contract || null),
+        note: shipForm.note || (income ? 'Внесение остатка' : 'Отгрузка клиенту'),
+      })
+      setShipForm({ direction: 'out', product: '', qty: '', contract: '', note: '' }); load()
+    } catch (e) { alert(apiError(e)) }
   }
 
   const reverseBatch = async (b) => {
@@ -328,21 +332,32 @@ export default function Warehouse({ user }) {
       {tab === 'fg' && (
         <>
           <div className="card stitch">
-            <h2>Отгрузка клиенту</h2>
+            <h2>{shipForm.direction === 'in' ? 'Приход готовой продукции' : 'Отгрузка клиенту'}</h2>
             <div className="formrow">
+              <div><label className="f">Операция</label>
+                <select value={shipForm.direction} onChange={e => setShipForm({ ...shipForm, direction: e.target.value })}>
+                  <option value="out">Отгрузка клиенту</option>
+                  <option value="in">Приход (внести остаток)</option>
+                </select></div>
               <div><label className="f">Изделие</label>
                 <select value={shipForm.product} onChange={e => setShipForm({ ...shipForm, product: e.target.value })}>
                   <option value="">—</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} (на складе: {p.fg_stock})</option>)}
                 </select></div>
               <div><label className="f">Кол-во</label><input type="number" min="1" value={shipForm.qty} onChange={e => setShipForm({ ...shipForm, qty: e.target.value })} /></div>
-              <div><label className="f">Договор</label>
-                <select value={shipForm.contract} onChange={e => setShipForm({ ...shipForm, contract: e.target.value })}>
-                  <option value="">—</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.number}</option>)}
-                </select></div>
+              {shipForm.direction === 'out' && (
+                <div><label className="f">Договор</label>
+                  <select value={shipForm.contract} onChange={e => setShipForm({ ...shipForm, contract: e.target.value })}>
+                    <option value="">—</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.number}</option>)}
+                  </select></div>
+              )}
               <div><label className="f">Примечание</label><input value={shipForm.note} onChange={e => setShipForm({ ...shipForm, note: e.target.value })} /></div>
-              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={ship} disabled={!shipForm.product || !shipForm.qty}>Отгрузить</button></div>
+              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={ship} disabled={!shipForm.product || !shipForm.qty}>
+                {shipForm.direction === 'in' ? 'Оприходовать' : 'Отгрузить'}</button></div>
             </div>
-            <p className="muted">Отгрузка уменьшает остаток готовой продукции и попадает в рейтинг продаж в «Аналитике».</p>
+            <p className="muted">Обычно готовая продукция попадает на склад сама — при завершении
+              производственного заказа. Приход вручную нужен при переходе на систему, чтобы внести
+              то, что уже лежит на складе. Отгрузка уменьшает остаток и попадает в рейтинг продаж
+              в «Аналитике».</p>
           </div>
           <div className="card" style={{ padding: 0 }}>
             <table>

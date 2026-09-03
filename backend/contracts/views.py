@@ -1,6 +1,7 @@
 import io
 from datetime import datetime
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -28,6 +29,39 @@ def parse_amount_cell(value):
         return float(text)
     except ValueError:
         return 0
+
+
+CARRY_OVER_NOTE = "Перенос из прежнего учёта"
+
+
+def carry_over_payment(contract, raw_paid):
+    """Перенести из файла то, что по договору уже оплачено.
+
+    Выгрузка колонку paid_amount пишет, а импорт её раньше не читал — при
+    переносе истории оплаченный договор выглядел неоплаченным, и воронка
+    считала уже полученные деньги ожидаемыми.
+
+    Оплаты живут в графике платежей, поэтому заводим одну строку на всю
+    сумму договора с отметкой о переносе. Повторная загрузка того же файла
+    её обновляет, а не добавляет вторую: строка узнаётся по этой отметке.
+    """
+    paid = parse_amount_cell(raw_paid)
+    item = contract.payment_schedule.filter(note=CARRY_OVER_NOTE).first()
+    if not paid:
+        if item:
+            item.delete()
+        return
+    if contract.amount <= 0:
+        return
+    due = contract.deadline or contract.signed_date or timezone.localdate()
+    values = dict(amount=contract.amount, paid_amount=min(paid, contract.amount),
+                  due_date=due, paid_date=contract.signed_date or due)
+    if item:
+        for k, v in values.items():
+            setattr(item, k, v)
+        item.save()
+    else:
+        PaymentScheduleItem.objects.create(contract=contract, note=CARRY_OVER_NOTE, **values)
 
 
 def parse_date_cell(value):
@@ -154,9 +188,12 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
                         else:
                             defaults["status"] = st
 
-                _, was_created = Contract.objects.update_or_create(number=number, defaults=defaults)
+                contract, was_created = Contract.objects.update_or_create(
+                    number=number, defaults=defaults)
                 created += was_created
                 updated += (not was_created)
+
+                carry_over_payment(contract, data.get("paid_amount"))
             except Exception as e:
                 errors.append(f"строка {i}: {e}")
         return Response({"created": created, "updated": updated, "errors": errors})

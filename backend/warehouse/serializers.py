@@ -50,6 +50,28 @@ class FinishedGoodsMovementSerializer(serializers.ModelSerializer):
         model = FinishedGoodsMovement
         fields = "__all__"
 
+    def validate(self, attrs):
+        """Отгрузить больше, чем лежит на складе, нельзя.
+
+        Знак здесь осмыслен: плюс — приход (сдача из цеха или внесение
+        начального остатка), минус — отгрузка. Без этой проверки остаток
+        готовой продукции уходил в минус так же тихо, как склад материалов
+        до появления проверки при запуске заказа.
+        """
+        qty = attrs.get("qty", getattr(self.instance, "qty", 0))
+        product = attrs.get("product", getattr(self.instance, "product", None))
+        if qty == 0:
+            raise serializers.ValidationError({"qty": "Количество не может быть нулевым."})
+        if qty < 0 and product is not None:
+            stock = product.fg_stock
+            if self.instance is not None:
+                stock -= self.instance.qty
+            if stock + qty < 0:
+                raise serializers.ValidationError(
+                    {"qty": f"На складе только {stock} шт «{product.name}», "
+                            f"отгрузить {abs(qty)} нельзя."})
+        return attrs
+
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     supplier_name = serializers.CharField(source="supplier.name", read_only=True)
