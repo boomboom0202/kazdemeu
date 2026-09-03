@@ -136,11 +136,19 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
     def import_excel(self, request):
-        """Массовая загрузка: колонки number, customer, title, status, amount, signed_date, deadline, specification."""
+        """Массовая загрузка: колонки number, customer, title, status, amount,
+        paid_amount, signed_date, deadline, specification.
+
+        Поле формы carry_over=1 включает режим переноса истории: статус берётся
+        из файла как есть, даже если по цепочке такой переход запрещён. Нужно
+        при переезде с прежнего учёта — договоры туда попадают уже выполненными,
+        и проводить каждый через согласование бессмысленно.
+        """
         from openpyxl import load_workbook
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "Файл не передан (поле file)."}, status=400)
+        carry_over = str(request.data.get("carry_over", "")).lower() in ("1", "true", "on")
         wb = load_workbook(file, data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
@@ -179,12 +187,13 @@ class ContractViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
                 existing = Contract.objects.filter(number=number).first()
                 st = str(data.get("status") or "").strip()
                 if st in dict(Contract.Status.choices):
-                    if existing is None:
+                    if existing is None or carry_over:
                         defaults["status"] = st
                     else:
                         err = existing.transition_error(st)
                         if err:
-                            errors.append(f"строка {i}: {err} Статус договора не изменён.")
+                            errors.append(f"строка {i}: {err} Статус договора не изменён. "
+                                          "Если это перенос истории, включите режим переноса.")
                         else:
                             defaults["status"] = st
 
