@@ -11,7 +11,9 @@ export default function Contracts({ user }) {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ number: '', customer: '', title: '', amount: '', deadline: '', specification: '' })
+  const [editId, setEditId] = useState(null)
+  const [form, setForm] = useState({ number: '', customer: '', title: '', amount: '',
+                                     signed_date: '', deadline: '', specification: '' })
   const [showCust, setShowCust] = useState(false)
   const [editCustId, setEditCustId] = useState(null)
   const [custForm, setCustForm] = useState({ name: '', phone: '', bin_iin: '', contact_person: '' })
@@ -29,9 +31,29 @@ export default function Contracts({ user }) {
 
   const loadCustomers = () => api.get('/customers/?page_size=200').then(r => setCustomers(r.data.results || []))
 
+  const emptyForm = { number: '', customer: '', title: '', amount: '', signed_date: '', deadline: '', specification: '' }
+  const resetForm = () => { setShowForm(false); setEditId(null); setForm(emptyForm) }
+
   const create = async () => {
-    await api.post('/contracts/', { ...form, amount: form.amount || 0, deadline: form.deadline || null })
-    setShowForm(false); setForm({ number: '', customer: '', title: '', amount: '', deadline: '', specification: '' }); load()
+    // Даты пустыми строками не принимаются — их нужно слать как null
+    const body = { ...form, amount: form.amount || 0,
+      deadline: form.deadline || null, signed_date: form.signed_date || null }
+    try {
+      if (editId) await api.patch(`/contracts/${editId}/`, body)
+      else await api.post('/contracts/', body)
+      resetForm(); load()
+    } catch (e) { alert(apiError(e)) }
+  }
+
+  // Договор, заведённый вручную, до сих пор нельзя было поправить: ни дату
+  // подписания поставить, ни опечатку в сумме исправить. Статус здесь не
+  // трогаем — он меняется кнопками в карточке, по цепочке.
+  const editContract = (c) => {
+    setEditId(c.id); setShowForm(true); setShowCust(false)
+    setForm({ number: c.number, customer: c.customer, title: c.title || '',
+      amount: c.amount || '', signed_date: c.signed_date || '',
+      deadline: c.deadline || '', specification: c.specification || '' })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const resetCust = () => { setEditCustId(null); setCustForm({ name: '', phone: '', bin_iin: '', contact_person: '' }) }
@@ -93,7 +115,8 @@ export default function Contracts({ user }) {
             <button className="btn ghost small" onClick={() => fileRef.current.click()}>Импорт из Excel</button>
             <input type="file" ref={fileRef} accept=".xlsx" style={{ display: 'none' }} onChange={importExcel} />
             <button className="btn ghost small" onClick={() => setShowCust(s => !s)}>+ Новый клиент</button>
-            <button className="btn small" onClick={() => setShowForm(s => !s)}>+ Новый договор</button>
+            <button className="btn small" onClick={() => showForm ? resetForm() : setShowForm(true)}>
+              {showForm ? 'Закрыть' : '+ Новый договор'}</button>
           </>}
         </div>
       </div>
@@ -131,6 +154,7 @@ export default function Contracts({ user }) {
 
       {showForm && (
         <div className="card stitch">
+          <h2>{editId ? 'Редактирование договора' : 'Новый договор'}</h2>
           <div className="formrow">
             <div><label className="f">Номер</label><input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} /></div>
             <div><label className="f">Заказчик</label>
@@ -139,11 +163,15 @@ export default function Contracts({ user }) {
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select></div>
             <div><label className="f">Сумма, ₸</label><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+            <div><label className="f">Дата подписания</label><input type="date" value={form.signed_date} onChange={e => setForm({ ...form, signed_date: e.target.value })} /></div>
             <div><label className="f">Срок</label><input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></div>
           </div>
           <div className="formrow"><div><label className="f">Название</label><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div></div>
           <div className="formrow"><div><label className="f">Тех. спецификация</label><textarea rows={2} value={form.specification} onChange={e => setForm({ ...form, specification: e.target.value })} /></div></div>
-          <button className="btn" onClick={create} disabled={!form.number || !form.customer}>Сохранить</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn" onClick={create} disabled={!form.number || !form.customer}>Сохранить</button>
+            <button className="btn ghost" onClick={resetForm}>Отмена</button>
+          </div>
         </div>
       )}
 
@@ -175,7 +203,10 @@ export default function Contracts({ user }) {
                   <td className="num">{fmt(c.paid_amount)}</td>
                 </>}
                 <td>{c.deadline || '—'}</td>
-                {mayEdit && <td><button className="btn small ghost" onClick={() => deleteContract(c)}>Удл.</button></td>}
+                {mayEdit && <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn small ghost" onClick={() => editContract(c)}>Изм.</button>{' '}
+                  <button className="btn small ghost" onClick={() => deleteContract(c)}>Удл.</button>
+                </td>}
               </tr>
             ))}
           </tbody>
