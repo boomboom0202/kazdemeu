@@ -25,7 +25,7 @@ export default function Production({ user }) {
   const [tab, setTab] = useState(
     can(user, 'production.orders') ? 'orders'
       : can(user, 'catalog.products') ? 'products' : 'stages')
-  const [form, setForm] = useState({ number: '', product: '', qty: '', contract: '' })
+  const [form, setForm] = useState({ number: '', product: '', qty: '', contract: '', carry_over: false })
   const [detail, setDetail] = useState(null) // product detail with QR/BOM
   const [routeForm, setRouteForm] = useState({ template: '', norm_hours: '' })
   const [showProd, setShowProd] = useState(false)
@@ -68,8 +68,10 @@ export default function Production({ user }) {
   }, [])
 
   const create = async () => {
-    await api.post('/production-orders/', { ...form, contract: form.contract || null })
-    setForm({ number: '', product: '', qty: '', contract: '' }); load()
+    try {
+      await api.post('/production-orders/', { ...form, contract: form.contract || null })
+      setForm({ number: '', product: '', qty: '', contract: '', carry_over: false }); load()
+    } catch (e) { alert(apiError(e)) }
   }
 
   const resetProd = () => { setShowProd(false); setEditProdId(null); setProdForm({ name: '', sku: '', base_price: '', labor_cost: '', norm_hours: '', overhead_cost: '', overhead_override: false }) }
@@ -224,7 +226,16 @@ export default function Production({ user }) {
                 </select></div>
               <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={create} disabled={!form.product || !form.qty}>Создать</button></div>
             </div>
-            <p className="muted">Запуск заказа автоматически списывает материалы по BOM; завершение — приходует готовую продукцию на склад.</p>
+            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}
+              title="Заказ сразу встанет «в работу», а склад не тронется: материалы по нему цех забрал ещё до перехода на систему.">
+              <input type="checkbox" style={{ width: 'auto', margin: 0 }}
+                checked={form.carry_over}
+                onChange={e => setForm({ ...form, carry_over: e.target.checked })} />
+              цех уже шьёт — материалы списаны до перехода на систему
+            </label>
+            <p className="muted">Запуск заказа автоматически списывает материалы по BOM; завершение — приходует готовую продукцию на склад.
+              {form.carry_over && <><br /><b>Перенос:</b> заказ создастся сразу «в работе», склад не изменится —
+                нажимать «Запуск» не нужно, останется отметить этапы и завершить.</>}</p>
           </div>
 
           {orders.map(o => (

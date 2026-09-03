@@ -94,6 +94,10 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
     contract_number = serializers.CharField(source="contract.number", read_only=True, default=None)
     stages = ProductionStageSerializer(many=True, read_only=True)
     number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    # Перенос заказа, который цех начал ещё до перехода на систему: материалы
+    # по нему давно в работе, и обычный «Запуск» списал бы их второй раз —
+    # уже из сегодняшнего остатка, где их нет.
+    carry_over = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = ProductionOrder
@@ -107,6 +111,14 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        carry_over = validated_data.pop("carry_over", False)
         if not validated_data.get("number"):
             validated_data["number"] = ProductionOrder.next_number()
-        return super().create(validated_data)
+        order = super().create(validated_data)
+        if carry_over:
+            # Заказ сразу в работе и помечен как списанный: склад не трогаем,
+            # остаток материалов уже отражает то, что цех забрал.
+            order.status = ProductionOrder.Status.IN_PROGRESS
+            order.materials_written_off = True
+            order.save(update_fields=["status", "materials_written_off"])
+        return order
