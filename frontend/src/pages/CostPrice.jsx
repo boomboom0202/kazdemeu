@@ -7,6 +7,13 @@ import { Loader, LoadError } from '../components/Loader'
  * «Финансов»; здесь они на отдельной странице вместе с настройками
  * распределения и разбором расчёта по каждому изделию.
  */
+const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
+const monthName = (ym) => {
+  const [y, m] = (ym || '').split('-')
+  return MONTHS[Number(m) - 1] ? `${MONTHS[Number(m) - 1]} ${y}` : ym
+}
+
 export default function CostPrice({ user }) {
   // три блока страницы — три отдельных права
   const seeFixed = can(user, 'finance.fixed')
@@ -20,6 +27,7 @@ export default function CostPrice({ user }) {
   const [rows, setRows] = useState([])
   const [failed, setFailed] = useState(false)
   const [form, setForm] = useState({ name: '', monthly_amount: '', category: '' })
+  const [pf, setPf] = useState(null)   // сверка норматива с фактическими выплатами
 
   const load = useCallback(() => {
     setFailed(false)
@@ -27,7 +35,8 @@ export default function CostPrice({ user }) {
     if (seeSettings) jobs.push(api.get('/cost-settings/').then(r => setCs(r.data)))
     if (seeFixed) jobs.push(
       api.get('/fixed-costs/?page_size=200').then(r => setFixed(r.data.results || [])),
-      api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || [])))
+      api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || [])),
+      api.get('/reports/fixed-costs-fact/').then(r => setPf(r.data)))
     if (seeProducts) jobs.push(api.get('/analytics/products/').then(r => setRows(r.data)))
     Promise.all(jobs).catch(() => setFailed(true))
   }, [seeSettings, seeFixed, seeProducts])
@@ -144,7 +153,55 @@ export default function CostPrice({ user }) {
             </tr>}
           </tbody>
         </table>
-      </div></div>}
+      </div>
+
+      {/* Норматив против факта. Себестоимость считается по нормативу — иначе
+          в месяц квартального платежа изделие дорожало бы втрое. ОПиУ живёт
+          по факту. Расхождение и есть то, ради чего расход вводится дважды. */}
+      {pf && pf.rows.length > 0 && <div className="card" style={{ padding: 0, marginTop: 14 }}>
+        <div style={{ padding: '13px 16px 0' }}>
+          <h2>Норматив и фактические выплаты за {monthName(pf.month)}</h2>
+          <p className="muted">Слева — сколько заложено в себестоимость, справа — сколько
+            реально ушло со счёта по операциям этой категории в «Финансах». Расхождение
+            означает одно из двух: норматив устарел или расход ещё не заведён.</p>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Категория</th><th className="num">Норматив, ₸/мес</th>
+            <th className="num">Оплачено</th><th className="num">Расхождение</th><th>Что входит</th>
+          </tr></thead>
+          <tbody>
+            {pf.rows.map(r => (
+              <tr key={r.category}>
+                <td><b>{r.category}</b></td>
+                <td className="num">{fmt(r.plan)}</td>
+                <td className="num">{r.fact ? fmt(r.fact) : <span className="muted">не заведено</span>}</td>
+                <td className="num">
+                  {Math.abs(r.diff) < 0.005
+                    ? <span className="pill ok">сходится</span>
+                    : <b style={{ color: r.diff > 0 ? 'var(--red)' : 'var(--thread)' }}>
+                        {r.diff > 0 ? '+' : ''}{fmt(r.diff)}</b>}
+                </td>
+                <td className="muted">{r.items.join(', ')}</td>
+              </tr>
+            ))}
+            <tr>
+              <td><b>Итого</b></td>
+              <td className="num"><b>{fmt(pf.plan_total)}</b></td>
+              <td className="num"><b>{fmt(pf.fact_total)}</b></td>
+              <td className="num"><b>{pf.diff_total > 0 ? '+' : ''}{fmt(pf.diff_total)}</b></td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+        {pf.without_category.length > 0 && (
+          <p className="muted" style={{ padding: '0 16px 13px' }}>
+            Сверить не с чем — не указана категория: {pf.without_category.map(w => w.name).join(', ')}.
+            Проставьте её в строке расхода выше, и они появятся в сверке.
+          </p>
+        )}
+      </div>}
+      </div>}
 
       {seeSettings && cs && <div className={roSettings ? 'readonly' : ''}><div className="card stitch">
         <h2>2. Как разносить их по изделиям</h2>

@@ -62,6 +62,7 @@ urlpatterns = [
     path("api/reports/cashflow/", fin.cashflow_report),
     path("api/reports/pnl/", fin.pnl_report),
     path("api/reports/forecast/", fin.forecast_report),
+    path("api/reports/fixed-costs-fact/", fin.fixed_costs_plan_fact),
     path("api/analytics/products/", an.product_analytics),
     path("api/analytics/contracts/", an.contracts_status_analytics),
     path("api/analytics/dashboard/", an.dashboard),

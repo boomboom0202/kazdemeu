@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
@@ -133,3 +134,67 @@ def forecast_report(request):
                        "probability": w, "weighted": remaining * w})
         expected += remaining * w
     return Response({"funnel": funnel, "expected_total": round(expected, 2)})
+
+
+@api_view(["GET"])
+@permission_classes([section_read("finance.fixed")])
+def fixed_costs_plan_fact(request):
+    """Сверка постоянных расходов: норматив против фактических выплат.
+
+    Себестоимость считается по нормативу («аренда обходится в 450 000
+    в месяц») — иначе в месяц квартального платежа изделие дорожало бы
+    втрое. ОПиУ показывает факт. Расхождение между ними и есть то, ради
+    чего постоянный расход вводится отдельно от операции по кассе, но
+    до сих пор его негде было увидеть: поле «Категория» у постоянного
+    расхода хранилось и никак не использовалось.
+
+    Сверка идёт по категории: у нескольких постоянных расходов она может
+    совпадать, поэтому план и факт складываются по категории, а не по
+    отдельной строке.
+    """
+    from django.utils import timezone
+    from collections import OrderedDict
+
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+    if request.query_params.get("month"):          # YYYY-MM, для сверки за прошлые месяцы
+        try:
+            y, m = request.query_params["month"].split("-")
+            month_start = date(int(y), int(m), 1)
+        except (ValueError, TypeError):
+            pass
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    facts = {
+        r["category_id"]: r["total"]
+        for r in CashEntry.objects.filter(direction="out", date__gte=month_start,
+                                          date__lt=next_month)
+        .values("category_id").annotate(total=Sum("amount"))
+    }
+
+    rows, without_category = OrderedDict(), []
+    for fc in FixedCost.objects.filter(is_active=True).select_related("category"):
+        if fc.category_id is None:
+            without_category.append({"name": fc.name, "plan": float(fc.monthly_amount)})
+            continue
+        row = rows.setdefault(fc.category_id, {
+            "category": fc.category.name, "plan": 0.0, "items": []})
+        row["plan"] += float(fc.monthly_amount)
+        row["items"].append(fc.name)
+
+    result = []
+    for cat_id, row in rows.items():
+        fact = float(facts.get(cat_id) or 0)
+        result.append({**row, "fact": fact, "diff": round(fact - row["plan"], 2)})
+    result.sort(key=lambda r: -r["plan"])
+
+    plan_total = sum(r["plan"] for r in result) + sum(r["plan"] for r in without_category)
+    fact_total = sum(r["fact"] for r in result)
+    return Response({
+        "month": month_start.strftime("%Y-%m"),
+        "rows": result,
+        "without_category": without_category,
+        "plan_total": round(plan_total, 2),
+        "fact_total": round(fact_total, 2),
+        "diff_total": round(fact_total - plan_total, 2),
+    })
