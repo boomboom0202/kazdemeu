@@ -76,7 +76,8 @@ export default function ContractDetail({ user }) {
     <div className={ro ? 'readonly' : ''}>
       <div className="pagehead">
         <div>
-          <h1>№{c.number} — {c.title}</h1>
+          {/* в реестре номер закупки бывает уже со знаком: «№000061174» */}
+          <h1>№{String(c.number).replace(/^№\s*/, '')} — {c.title}</h1>
           <div className="muted">{c.customer_name} · Менеджер: {c.manager_name || '—'} · Срок: {c.deadline || '—'}</div>
         </div>
         <div>

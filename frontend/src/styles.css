@@ -35,7 +35,9 @@ body { background: var(--paper); color: var(--ink); font-size: 14px; }
 .sidebar button.logout { margin-top: 8px; background: none; border: 1px solid rgba(255,255,255,.3);
   color: #dbe2f5; padding: 4px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; }
 
-.main { flex: 1; padding: 22px 28px 60px; max-width: 1280px; }
+/* min-width: 0 — иначе широкая таблица (реестр, матрица по месяцам) растягивает
+   всю страницу вправо, и прокрутка внутри .tablewrap не включается */
+.main { flex: 1; min-width: 0; padding: 22px 28px 60px; max-width: 1280px; }
 .pagehead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
 h1 { font-size: 21px; font-weight: 800; }
 h2 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }

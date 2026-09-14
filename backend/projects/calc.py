@@ -78,6 +78,9 @@ def month_in(comment):
     return None
 
 
+# меньше одного упоминания месяца на столько строк — столбец месяцами не размечен
+SPARSE_ROWS = 15
+
 _FULL_YEAR = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
 _YEAR_AFTER_MONTH = re.compile(
     r"(?:янв|фев|март|апр|арп|ма[йя]|июн|июл|авг|сен|окт|ноя|дек)[а-я]*\.?\s*(\d\d)(?!\d)")
@@ -136,14 +139,23 @@ def assign_months(comments, today=None):
     else:
         base = (today.year if top % 12 + 1 <= today.month else today.year - 1) - top // 12
 
+    def as_date(i):
+        return date(base + i // 12, i % 12 + 1, 1)
+
+    # Столбец, где месяц упомянут редко («прочие траты»: одно «отчисл июль»
+    # на 86 строк), месяцами не размечен — растянуть этот июль на всё, что
+    # выше, значило бы выдумать. Там месяц ставится только тем строкам,
+    # где он написан; остальные остаются «без месяца», их можно проставить.
+    if sum(i is not None for i in idx) * SPARSE_ROWS < len(idx):
+        return [None if i is None else as_date(i) for i in idx]
+
     # пропуски: вперёд от предыдущего, в начале столбца — от первого найденного
     first = next(i for i in idx if i is not None)
     out, cur = [], None
     for i in idx:
         if i is not None:
             cur = i
-        pick = first if cur is None else cur
-        out.append(date(base + pick // 12, pick % 12 + 1, 1))
+        out.append(as_date(first if cur is None else cur))
     return out
 
 
