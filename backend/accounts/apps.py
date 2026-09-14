@@ -17,5 +17,7 @@ class AccountsConfig(AppConfig):
             "workshop.WorkOrder", "workshop.WorkSize", "workshop.CutEntry",
             "workshop.EmbroideryEntry", "workshop.SewingJob", "workshop.SewingProgress",
             "workshop.PackEntry", "workshop.Brigade",
+            "projects.Project", "projects.ProjectExpense", "projects.ProjectIncome",
+            "projects.AdminCategory", "projects.AdminExpense",
         ]:
             audit.register(apps.get_model(label))

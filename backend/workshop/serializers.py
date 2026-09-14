@@ -42,6 +42,7 @@ class WorkSizeSerializer(serializers.ModelSerializer):
 
 class WorkOrderSerializer(serializers.ModelSerializer):
     contract_number = serializers.CharField(source="contract.number", read_only=True, default=None)
+    project_name = serializers.CharField(source="project.name", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     totals = serializers.SerializerMethodField()
     sizes_count = serializers.SerializerMethodField()
@@ -65,14 +66,24 @@ class WorkOrderSerializer(serializers.ModelSerializer):
         self._size_rows = rows
         return value
 
+    @staticmethod
+    def _project_from_contract(validated_data):
+        """Проект не выбран, а у договора он есть — берём его: из проекта
+        должно быть видно, что шьётся по его позициям."""
+        contract = validated_data.get("contract")
+        if not validated_data.get("project") and contract and contract.project_id:
+            validated_data["project"] = contract.project
+
     def create(self, validated_data):
         validated_data.pop("sizes_text", None)
+        self._project_from_contract(validated_data)
         order = super().create(validated_data)
         apply_sizes(order, getattr(self, "_size_rows", []))
         return order
 
     def update(self, instance, validated_data):
         validated_data.pop("sizes_text", None)
+        self._project_from_contract(validated_data)
         return super().update(instance, validated_data)
 
 

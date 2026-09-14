@@ -23,7 +23,9 @@ export default function Workshop({ user }) {
   const [contracts, setContracts] = useState([])
   const [failed, setFailed] = useState(false)
   const [show, setShow] = useState(false)
-  const empty = { product: '', contract: '', client: '', deadline: '', sewing_rate: '', sizes_text: '' }
+  const seeProjects = can(user, 'projects.projects')
+  const [projects, setProjects] = useState([])
+  const empty = { product: '', contract: '', project: '', client: '', deadline: '', sewing_rate: '', sizes_text: '' }
   const [form, setForm] = useState(empty)
   const [bForm, setBForm] = useState({ leader: '', people: '' })
 
@@ -37,13 +39,14 @@ export default function Workshop({ user }) {
   }
   useEffect(() => { load() }, [status])
   useEffect(() => {
-    if (seeContracts) api.get('/contracts/?page_size=300').then(r => setContracts(r.data.results || []))
+    if (seeContracts) api.get('/contracts/?page_size=5000').then(r => setContracts(r.data.results || []))
+    if (seeProjects) api.get('/projects/?page_size=2000').then(r => setProjects(r.data.results || []))
   }, [])
 
   const create = async () => {
     try {
       const { data } = await api.post('/work-orders/', {
-        ...form, contract: form.contract || null, deadline: form.deadline || null,
+        ...form, contract: form.contract || null, project: form.project || null, deadline: form.deadline || null,
         sewing_rate: form.sewing_rate || 0,
       })
       setForm(empty); setShow(false)
@@ -54,7 +57,8 @@ export default function Workshop({ user }) {
   // Выбрали договор — «для кого» подставится из заказчика, если пусто
   const pickContract = (id) => {
     const c = contracts.find(x => String(x.id) === String(id))
-    setForm(f => ({ ...f, contract: id, client: f.client || (c ? c.customer_name : '') }))
+    setForm(f => ({ ...f, contract: id, client: f.client || (c ? c.customer_name : ''),
+      project: f.project || (c && c.project ? String(c.project) : '') }))
   }
 
   const addBrigade = async () => {
@@ -101,6 +105,11 @@ export default function Workshop({ user }) {
                 <select value={form.contract} onChange={e => pickContract(e.target.value)}>
                   <option value="">— без договора —</option>
                   {contracts.map(c => <option key={c.id} value={c.id}>{c.number} · {c.customer_name}</option>)}
+                </select></div>}
+              {seeProjects && <div><label className="f">Проект</label>
+                <select value={form.project} onChange={e => setForm({ ...form, project: e.target.value })}>
+                  <option value="">— без проекта —</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select></div>}
               <div><label className="f">Для кого</label>
                 <input value={form.client} placeholder="Павлодар, частный заказ…" onChange={e => setForm({ ...form, client: e.target.value })} /></div>

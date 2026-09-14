@@ -39,7 +39,10 @@ class Contract(models.Model):
         Status.CANCELLED: set(),
     }
 
-    number = models.CharField(max_length=50, unique=True)
+    # Номер не уникален: в реестре у одной закупки бывает несколько позиций
+    # (трусы, костюм, халат по 16561301-1), а раньше уникальность склеивала
+    # их при загрузке в одну строку и молча теряла остальные.
+    number = models.CharField("Номер", max_length=100)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="contracts")
     title = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
@@ -50,6 +53,31 @@ class Contract(models.Model):
     specification = models.TextField(blank=True, help_text="Техническая спецификация")
     manager = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="managed_contracts")
+
+    # ── Колонки реестра «Договора.xlsx»: одна строка — одна позиция закупки ──
+    purchase_no = models.CharField("Номер закупки", max_length=100, blank=True, db_index=True)
+    own_company = models.ForeignKey("tenders.OwnCompany", null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="contracts",
+                                    verbose_name="С какой фирмы")
+    platform = models.CharField("Площадка", max_length=100, blank=True)
+    qty = models.DecimalField("Кол-во", max_digits=14, decimal_places=3, null=True, blank=True,
+                              validators=NON_NEGATIVE)
+    price = models.DecimalField("Цена", max_digits=14, decimal_places=2, null=True, blank=True,
+                                validators=NON_NEGATIVE)
+    contract_no = models.CharField("Номер договора", max_length=100, blank=True)
+    costs_note = models.CharField("Затраты", max_length=100, blank=True)
+    comment = models.TextField("Комментарии", blank=True)
+    investor = models.CharField("Инвестор", max_length=150, blank=True)
+    payment_note = models.CharField("Оплата", max_length=100, blank=True)
+    delivery_place = models.CharField("Место поставки", max_length=255, blank=True)
+    delivery_terms = models.TextField("Срок поставки", blank=True)
+    planned_execution = models.CharField("Планируемый срок исполнения", max_length=100, blank=True)
+    phone = models.CharField("Телефон", max_length=255, blank=True)
+    note = models.TextField("Коментарий", blank=True)
+    project = models.ForeignKey("projects.Project", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="contracts",
+                                verbose_name="Проект")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

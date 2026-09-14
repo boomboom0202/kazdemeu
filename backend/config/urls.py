@@ -15,6 +15,7 @@ from finance import analytics_views as an
 from tenders import views as tnd
 from assistant import views as ai
 from workshop import views as ws
+from projects import views as pj
 
 router = DefaultRouter()
 # accounts
@@ -61,6 +62,12 @@ router.register("embroidery-entries", ws.EmbroideryEntryViewSet)
 router.register("sewing-jobs", ws.SewingJobViewSet)
 router.register("sewing-progress", ws.SewingProgressViewSet)
 router.register("pack-entries", ws.PackEntryViewSet)
+# проекты и расходы
+router.register("projects", pj.ProjectViewSet)
+router.register("project-expenses", pj.ProjectExpenseViewSet)
+router.register("project-incomes", pj.ProjectIncomeViewSet)
+router.register("admin-categories", pj.AdminCategoryViewSet)
+router.register("admin-expenses", pj.AdminExpenseViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),

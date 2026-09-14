@@ -39,6 +39,8 @@ class WorkOrder(models.Model):
     product = models.CharField("Изделие", max_length=150)
     contract = models.ForeignKey("contracts.Contract", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="work_orders")
+    project = models.ForeignKey("projects.Project", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="work_orders")
     client = models.CharField("Для кого", max_length=200, blank=True,
                               help_text="Если договора нет: «Павлодар», «частный заказ»")
     deadline = models.DateField("Срок", null=True, blank=True)

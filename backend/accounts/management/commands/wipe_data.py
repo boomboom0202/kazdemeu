@@ -52,9 +52,13 @@ class Command(BaseCommand):
         # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются.
         # Журнал и уведомления идут последними: удаление записей само пишется
         # в журнал, и вычищенный первым он снова оказался бы полным.
+        from projects.models import (ProjectExpense, ProjectIncome, Project, AdminExpense,
+                                     AdminCategory)
+
         plan = [
             SewingProgress, SewingJob, PackEntry, EmbroideryEntry, CutMaterial, CutEntry,
             WorkSize, WorkOrder, Brigade,
+            ProjectExpense, ProjectIncome, AdminExpense, AdminCategory, Project,
             Comment, ContractFile, PaymentScheduleItem, CashEntry,
             Tender,
             ProductionStage, ProductionOrder,

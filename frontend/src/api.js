@@ -103,6 +103,10 @@ const FIELD_NAMES = {
   product: 'Изделие', client: 'Для кого', sizes_text: 'Размеры', sewing_rate: 'Расценка',
   brigade: 'Бригада', ready: 'Готовность', meters: 'Метраж', leader: 'Бригадир',
   people: 'Людей в бригаде', size: 'Размер', planned: 'План', kind: 'Вид', started: 'Дата выдачи',
+  purchase_no: 'Номер закупки', own_company: 'Фирма', platform: 'Площадка',
+  contract_no: 'Номер договора', investor: 'Инвестор', delivery_place: 'Место поставки',
+  delivery_terms: 'Срок поставки', planned_execution: 'Планируемый срок', comment: 'Комментарий',
+  project: 'Проект', category: 'Статья', month: 'Месяц',
 }
 
 /**

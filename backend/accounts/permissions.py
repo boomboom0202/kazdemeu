@@ -1,7 +1,7 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 # Разделы системы (секции), на которые разграничен доступ
-SECTIONS = ["tenders", "contracts", "workshop", "catalog", "production", "warehouse",
+SECTIONS = ["tenders", "contracts", "projects", "workshop", "catalog", "production", "warehouse",
             "finance", "analytics"]
 
 # Что роль может ЧИТАТЬ. "*" — всё.
@@ -11,10 +11,10 @@ SECTIONS = ["tenders", "contracts", "workshop", "catalog", "production", "wareho
 READ_ACCESS = {
     "admin": {"*"},
     "director": {"*"},
-    "manager": {"tenders", "contracts", "workshop", "catalog", "production", "warehouse",
-                "analytics"},
+    "manager": {"tenders", "contracts", "projects", "workshop", "catalog", "production",
+                "warehouse", "analytics"},
     "technologist": {"catalog", "production", "warehouse", "contracts", "workshop"},
-    "accountant": {"finance", "contracts", "tenders", "analytics", "workshop"},
+    "accountant": {"finance", "contracts", "projects", "tenders", "analytics", "workshop"},
     "warehouse": {"warehouse", "production", "catalog", "workshop"},
     "worker": {"production", "catalog", "workshop"},
     "viewer": {"tenders", "contracts", "workshop", "catalog", "production", "warehouse",
@@ -25,9 +25,9 @@ READ_ACCESS = {
 WRITE_ACCESS = {
     "admin": {"*"},
     "director": {"tenders"},
-    "manager": {"tenders", "contracts"},
+    "manager": {"tenders", "contracts", "projects"},
     "technologist": {"catalog", "production", "workshop"},
-    "accountant": {"finance", "contracts"},
+    "accountant": {"finance", "contracts", "projects"},
     "warehouse": {"warehouse", "production", "workshop"},
     "worker": {"production", "workshop"},
     "viewer": set(),
@@ -50,8 +50,11 @@ AREAS = {
                   "movements": "Движения материалов", "suppliers": "Поставщики",
                   "purchase": "Заявки на закуп", "fg": "Готовая продукция"},
     "finance": {"entries": "Движение денег", "fixed": "Постоянные расходы",
-                "settings": "Настройки себестоимости", "reports": "Отчёты"},
+                "settings": "Настройки себестоимости", "reports": "Отчёты",
+                "admin": "Административные расходы"},
     "analytics": {},
+    "projects": {"projects": "Проекты", "expenses": "Расходы по проектам",
+                 "income": "Приход по проектам"},
     "workshop": {"orders": "Заказы цеха и размеры", "cutting": "Крой и вышивка",
                  "sewing": "Пошив и бригады", "packing": "Упаковка"},
 }

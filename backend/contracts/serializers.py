@@ -40,6 +40,8 @@ class ContractSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     paid_amount = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
+    own_company_name = serializers.CharField(source="own_company.name", read_only=True, default=None)
+    project_name = serializers.CharField(source="project.name", read_only=True, default=None)
 
     class Meta:
         model = Contract

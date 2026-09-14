@@ -102,6 +102,30 @@ export default function ContractDetail({ user }) {
         {c.specification && <div style={{ marginTop: 12 }}><label className="f">Тех. спецификация</label>{c.specification}</div>}
       </div>
 
+      {/* Все колонки строки реестра «Договора.xlsx», которые заполнены */}
+      {(() => {
+        const items = [
+          ['Номер закупки', c.purchase_no], ['С какой фирмы', c.own_company_name], ['Площадка', c.platform],
+          ['Номер договора', c.contract_no], ['Кол-во', c.qty !== null && c.qty !== undefined ? fmt(c.qty) : ''],
+          ['Цена', c.price !== null && c.price !== undefined ? `${fmt(c.price)} ₸` : ''],
+          ['Дата подписания', c.signed_date], ['Планируемый срок исполнения', c.planned_execution],
+          ['Место поставки', c.delivery_place], ['Срок поставки', c.delivery_terms], ['Телефон', c.phone],
+          ['Инвестор', c.investor], ['Затраты', c.costs_note], ['Оплата', c.payment_note],
+          ['Комментарии', c.comment], ['Коментарий', c.note],
+        ].filter(([, v]) => v)
+        if (!items.length && !c.project) return null
+        return (
+          <div className="card">
+            <h2>Из реестра</h2>
+            <div className="kv">
+              {c.project && <div><div className="k">Проект</div>
+                <div className="v">{can(user, 'projects.projects') ? <Link to={`/projects/${c.project}`}>{c.project_name}</Link> : c.project_name}</div></div>}
+              {items.map(([k, v]) => <div key={k}><div className="k">{k}</div><div className="v">{v}</div></div>)}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Из договора — прямо в цех: сколько сшито по каждому изделию */}
       {c.work_orders && c.work_orders.length > 0 && (
         <div className="card" style={{ padding: 0 }}>

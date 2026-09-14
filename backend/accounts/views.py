@@ -149,7 +149,7 @@ def access_keys(request):
     from .permissions import SECTIONS, AREAS
     titles = {"tenders": "Тендеры", "contracts": "Договоры", "catalog": "Изделия и каталог",
               "production": "Производство", "warehouse": "Склад", "finance": "Финансы",
-              "analytics": "Аналитика", "workshop": "Цех"}
+              "analytics": "Аналитика", "workshop": "Цех", "projects": "Проекты"}
     return Response([
         {"section": s, "title": titles.get(s, s),
          "areas": [{"key": f"{s}.{a}", "title": t} for a, t in AREAS.get(s, {}).items()]}

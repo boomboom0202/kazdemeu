@@ -15,6 +15,10 @@ import Admin from './pages/Admin'
 import Tenders from './pages/Tenders'
 import Workshop from './pages/Workshop'
 import WorkOrderDetail from './pages/WorkOrderDetail'
+import Projects from './pages/Projects'
+import ProjectDetail from './pages/ProjectDetail'
+import AdminExpenses from './pages/AdminExpenses'
+import { can } from './api'
 import Notifications from './components/Notifications'
 import { Loader, LoadError } from './components/Loader'
 import { canAny } from './api'
@@ -48,7 +52,9 @@ function Layout({ user, onLogout, children }) {
           <NavLink to="/">Дашборд</NavLink>
           {canAny(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
           {canAny(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
+          {canAny(user, 'projects') && <NavLink to="/projects">Проекты и расходы</NavLink>}
           {canAny(user, 'workshop') && <NavLink to="/workshop">Цех</NavLink>}
+          {can(user, 'finance.admin') && <NavLink to="/admin-expenses">Адм. расходы</NavLink>}
           {/* На этой странице живут два раздела прав: заказы — это «производство»,
               а изделия, состав, маршруты и конструктор этапов — «каталог».
               Пункт нужен, если открыт хотя бы один из них: иначе выданное
@@ -122,6 +128,9 @@ export default function App() {
         <Route path="/tenders" element={<Tenders user={user} />} />
         <Route path="/contracts" element={<Contracts user={user} />} />
         <Route path="/contracts/:id" element={<ContractDetail user={user} />} />
+        <Route path="/projects" element={<Projects user={user} />} />
+        <Route path="/projects/:id" element={<ProjectDetail user={user} />} />
+        <Route path="/admin-expenses" element={<AdminExpenses user={user} />} />
         <Route path="/workshop" element={<Workshop user={user} />} />
         <Route path="/workshop/:id" element={<WorkOrderDetail user={user} />} />
         <Route path="/production" element={<Production user={user} />} />
