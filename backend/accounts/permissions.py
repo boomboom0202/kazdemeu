@@ -1,19 +1,24 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 # Разделы системы (секции), на которые разграничен доступ
-SECTIONS = ["tenders", "contracts", "catalog", "production", "warehouse", "finance", "analytics"]
+SECTIONS = ["tenders", "contracts", "workshop", "catalog", "production", "warehouse",
+            "finance", "analytics"]
 
 # Что роль может ЧИТАТЬ. "*" — всё.
 # Строгая модель: цех не видит финансы, бухгалтер не лезет в производство и т.д.
+# Цех видят все, кому важно, сколько сшито: менеджер отвечает заказчику
+# о сроках, бухгалтер считает сдельную оплату бригадам.
 READ_ACCESS = {
     "admin": {"*"},
     "director": {"*"},
-    "manager": {"tenders", "contracts", "catalog", "production", "warehouse", "analytics"},
-    "technologist": {"catalog", "production", "warehouse", "contracts"},
-    "accountant": {"finance", "contracts", "tenders", "analytics"},
-    "warehouse": {"warehouse", "production", "catalog"},
-    "worker": {"production", "catalog"},
-    "viewer": {"tenders", "contracts", "catalog", "production", "warehouse", "analytics"},
+    "manager": {"tenders", "contracts", "workshop", "catalog", "production", "warehouse",
+                "analytics"},
+    "technologist": {"catalog", "production", "warehouse", "contracts", "workshop"},
+    "accountant": {"finance", "contracts", "tenders", "analytics", "workshop"},
+    "warehouse": {"warehouse", "production", "catalog", "workshop"},
+    "worker": {"production", "catalog", "workshop"},
+    "viewer": {"tenders", "contracts", "workshop", "catalog", "production", "warehouse",
+               "analytics"},
 }
 
 # Что роль может ИЗМЕНЯТЬ (создавать/править/удалять)
@@ -21,10 +26,10 @@ WRITE_ACCESS = {
     "admin": {"*"},
     "director": {"tenders"},
     "manager": {"tenders", "contracts"},
-    "technologist": {"catalog", "production"},
+    "technologist": {"catalog", "production", "workshop"},
     "accountant": {"finance", "contracts"},
-    "warehouse": {"warehouse", "production"},
-    "worker": {"production"},
+    "warehouse": {"warehouse", "production", "workshop"},
+    "worker": {"production", "workshop"},
     "viewer": set(),
 }
 
@@ -47,6 +52,8 @@ AREAS = {
     "finance": {"entries": "Движение денег", "fixed": "Постоянные расходы",
                 "settings": "Настройки себестоимости", "reports": "Отчёты"},
     "analytics": {},
+    "workshop": {"orders": "Заказы цеха и размеры", "cutting": "Крой и вышивка",
+                 "sewing": "Пошив и бригады", "packing": "Упаковка"},
 }
 
 # Все допустимые ключи: и разделы целиком, и их части

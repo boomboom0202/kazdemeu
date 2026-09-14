@@ -14,5 +14,8 @@ class AccountsConfig(AppConfig):
             "warehouse.StockMovement", "production.Product", "production.ProductionOrder",
             "production.ProductionStage", "finance.CashEntry", "warehouse.PurchaseOrder",
             "finance.FixedCost", "production.StageTemplate", "tenders.Tender",
+            "workshop.WorkOrder", "workshop.WorkSize", "workshop.CutEntry",
+            "workshop.EmbroideryEntry", "workshop.SewingJob", "workshop.SewingProgress",
+            "workshop.PackEntry", "workshop.Brigade",
         ]:
             audit.register(apps.get_model(label))

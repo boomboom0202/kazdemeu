@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { api, fmt, CONTRACT_STATUS, apiError, canEdit, can} from '../api'
 import { Loader, LoadError } from '../components/Loader'
+import { WorkBar, WorkLegend } from '../components/WorkBar'
 
 const FILE_KINDS = { sketch: 'Эскиз', layout: 'Макет', techcard: 'Техкарта', photo: 'Фото', other: 'Другое' }
 
@@ -100,6 +101,26 @@ export default function ContractDetail({ user }) {
         </div>
         {c.specification && <div style={{ marginTop: 12 }}><label className="f">Тех. спецификация</label>{c.specification}</div>}
       </div>
+
+      {/* Из договора — прямо в цех: сколько сшито по каждому изделию */}
+      {c.work_orders && c.work_orders.length > 0 && (
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ padding: '13px 16px 6px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <h2 style={{ margin: 0 }}>Цех по договору</h2>
+            <WorkLegend />
+          </div>
+          {c.work_orders.map(w => (
+            <Link key={w.id} className="ordercard" to={`/workshop/${w.id}`}>
+              <div>
+                <div className="t">{w.product}</div>
+                <div className="muted">{w.status_display}{w.deadline ? ` · срок ${w.deadline}` : ''}</div>
+              </div>
+              <div className="nums">сшито <b>{fmt(w.totals.sewn)}</b> из {fmt(w.totals.planned)} · упаковано {fmt(w.totals.packed)}</div>
+              <WorkBar t={w.totals} />
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="tabs">
         {seeSched && <button className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>График платежей ({c.payment_schedule.length})</button>}

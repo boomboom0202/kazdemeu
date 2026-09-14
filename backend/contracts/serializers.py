@@ -62,6 +62,20 @@ class ContractDetailSerializer(ContractSerializer):
     files = ContractFileSerializer(many=True, read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
     allowed_transitions = serializers.SerializerMethodField()
+    work_orders = serializers.SerializerMethodField()
 
     def get_allowed_transitions(self, obj):
         return sorted(map(str, Contract.TRANSITIONS.get(obj.status, set())))
+
+    def get_work_orders(self, obj):
+        """Заказы цеха по договору — чтобы из договора провалиться в цех.
+        Отдаются только тем, кому цех открыт."""
+        from accounts.permissions import can_read
+        request = self.context.get("request")
+        if not (request and can_read(request.user, "workshop.orders")):
+            return None
+        from workshop.calc import with_details, order_stats
+        return [{"id": o.id, "product": o.product, "status": o.status,
+                 "status_display": o.get_status_display(), "deadline": o.deadline,
+                 "totals": order_stats(o)}
+                for o in with_details(obj.work_orders.all())]

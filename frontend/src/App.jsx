@@ -13,6 +13,8 @@ import Analytics from './pages/Analytics'
 import Chat from './pages/Chat'
 import Admin from './pages/Admin'
 import Tenders from './pages/Tenders'
+import Workshop from './pages/Workshop'
+import WorkOrderDetail from './pages/WorkOrderDetail'
 import Notifications from './components/Notifications'
 import { Loader, LoadError } from './components/Loader'
 import { canAny } from './api'
@@ -46,12 +48,13 @@ function Layout({ user, onLogout, children }) {
           <NavLink to="/">Дашборд</NavLink>
           {canAny(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
           {canAny(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
+          {canAny(user, 'workshop') && <NavLink to="/workshop">Цех</NavLink>}
           {/* На этой странице живут два раздела прав: заказы — это «производство»,
               а изделия, состав, маршруты и конструктор этапов — «каталог».
               Пункт нужен, если открыт хотя бы один из них: иначе выданное
               точечное право на изделия некуда нажать. */}
           {(canAny(user, 'production') || canAny(user, 'catalog')) &&
-            <NavLink to="/production">Производство / Цех</NavLink>}
+            <NavLink to="/production">Изделия и нормы</NavLink>}
           {canAny(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
           {canAny(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
           {canAny(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
@@ -119,6 +122,8 @@ export default function App() {
         <Route path="/tenders" element={<Tenders user={user} />} />
         <Route path="/contracts" element={<Contracts user={user} />} />
         <Route path="/contracts/:id" element={<ContractDetail user={user} />} />
+        <Route path="/workshop" element={<Workshop user={user} />} />
+        <Route path="/workshop/:id" element={<WorkOrderDetail user={user} />} />
         <Route path="/production" element={<Production user={user} />} />
         <Route path="/warehouse" element={<Warehouse user={user} />} />
         <Route path="/finance" element={<Finance user={user} />} />

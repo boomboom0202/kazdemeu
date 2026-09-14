@@ -46,10 +46,15 @@ class Command(BaseCommand):
                                       StockMovement, Material, Supplier,
                                       PurchaseOrder)
 
+        from workshop.models import (SewingProgress, SewingJob, PackEntry, EmbroideryEntry,
+                                     CutMaterial, CutEntry, WorkSize, WorkOrder, Brigade)
+
         # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются.
         # Журнал и уведомления идут последними: удаление записей само пишется
         # в журнал, и вычищенный первым он снова оказался бы полным.
         plan = [
+            SewingProgress, SewingJob, PackEntry, EmbroideryEntry, CutMaterial, CutEntry,
+            WorkSize, WorkOrder, Brigade,
             Comment, ContractFile, PaymentScheduleItem, CashEntry,
             Tender,
             ProductionStage, ProductionOrder,

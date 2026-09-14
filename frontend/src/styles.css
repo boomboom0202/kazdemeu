@@ -281,3 +281,38 @@ img, svg, video { max-width: 100%; height: auto; }
 .ro-note b { color: var(--ink); }
 
 .hide { display: none !important; }
+
+/* ── Цех ─────────────────────────────────────────────────────────────
+   Полоска готовности складывается слоями: скроено (бледно), сшито,
+   упаковано (зелёным). Одна полоска отвечает на вопрос «где застряли». */
+.bar { position: relative; height: 9px; border-radius: 6px; background: var(--line);
+  overflow: hidden; min-width: 90px; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; max-width: 100%; }
+.bar i.l-cut { background: var(--indigo); opacity: .22; }
+.bar i.l-sewn { background: var(--indigo); opacity: .75; }
+.bar i.l-packed { background: var(--green); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-soft); }
+.legend span::before { content: ''; display: inline-block; width: 10px; height: 10px;
+  border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); opacity: var(--o, 1); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #f6f7fb; }
+tr.open td { background: #eef1f8; }
+td.over, .over { color: var(--red); font-weight: 700; }
+.drill { background: #fafaf7; border-top: 1px dashed var(--line); padding: 12px 16px 16px; }
+.drill h3 { font-size: 13px; margin: 10px 0 6px; color: var(--ink-soft); text-transform: uppercase;
+  letter-spacing: .04em; }
+.drill h3:first-child { margin-top: 0; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px;
+  background: #eef1f8; color: var(--indigo); font-weight: 600; }
+.chip.done { background: #e6f3ec; color: var(--green); }
+.ordercard { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); cursor: pointer; text-decoration: none;
+  color: inherit; }
+.ordercard:hover { background: #f6f7fb; }
+.ordercard:last-child { border-bottom: none; }
+.ordercard .t { font-weight: 800; }
+.ordercard .nums { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; text-align: right;
+  white-space: nowrap; }
+.ordercard .bar { grid-column: 1 / -1; }
+@media (max-width: 700px) { .ordercard { grid-template-columns: 1fr; } .ordercard .nums { text-align: left; } }

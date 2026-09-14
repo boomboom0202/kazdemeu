@@ -100,6 +100,9 @@ const FIELD_NAMES = {
   unit: 'Единица измерения', bin_iin: 'БИН/ИИН', phone: 'Телефон',
   contract: 'Договор', description: 'Описание', note: 'Примечание',
   first_name: 'Имя', is_active: 'Активен', method: 'Метод распределения',
+  product: 'Изделие', client: 'Для кого', sizes_text: 'Размеры', sewing_rate: 'Расценка',
+  brigade: 'Бригада', ready: 'Готовность', meters: 'Метраж', leader: 'Бригадир',
+  people: 'Людей в бригаде', size: 'Размер', planned: 'План', kind: 'Вид', started: 'Дата выдачи',
 }
 
 /**
