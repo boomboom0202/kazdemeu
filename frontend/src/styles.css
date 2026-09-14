@@ -390,3 +390,10 @@ h3.sub { font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; co
   .grid2.wide-left { grid-template-columns: 1fr; }
   .linktabs { flex-wrap: nowrap; }
 }
+
+/* Лист пошива: бригада, изделие и размер в одну строку — как в ячейках отчёта */
+table.sheet.grid td:nth-child(-n+3), table.sheet.grid th { white-space: nowrap; }
+table.sheet .wide { min-width: 240px; }
+
+/* Ячейка сетки не шире экрана: иначе таблица внутри растягивает колонку и всю страницу */
+.grid2 > * { min-width: 0; }

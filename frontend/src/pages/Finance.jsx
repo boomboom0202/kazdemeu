@@ -133,7 +133,7 @@ function Summary() {
             {rows.map(c => (
               <tr key={c.id}>
                 <td style={{ whiteSpace: 'nowrap' }}><Link to={`/contracts/${c.id}`}><b>{c.number}</b></Link></td>
-                <td>{c.customer}<div className="muted">{c.title}</div></td>
+                <td className="wide">{c.customer}<div className="muted">{c.title}</div></td>
                 <td><span className="badge" style={{ background: CONTRACT_STATUS[c.status]?.color }}>{c.status_display}</span></td>
                 <td className="num">{fmt(c.amount)}</td><td className="num">{fmt(c.paid)}</td><td className="num">{fmt(c.debt)}</td>
                 <td className="num">{fmt(c.expenses)}</td>

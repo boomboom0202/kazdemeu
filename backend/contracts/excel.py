@@ -189,15 +189,23 @@ def _tokens(s):
 
 def suggest_contract(name, contracts):
     """Договор, на который больше всего похоже название колонки: «Павлодар 741 шт»
-    найдёт заказчика из Павлодара. Совпадение по началу слова — падежи не мешают."""
+    найдёт заказчика из Павлодара. Совпадение по началу слова — падежи не мешают.
+
+    Совпадение с заказчиком и предметом весит больше, чем с местом поставки
+    и комментариями: «Павлодарская энергосетевая компания» ближе к «Павлодар»,
+    чем центр, у которого Павлодарская область только в адресе.
+    """
     want = _tokens(name)
     if not want:
         return None
+
+    def hits(tokens):
+        return sum(1 for w in want if any(h[:5] == w[:5] for h in tokens))
+
     best, score = None, 0
     for c in contracts:
-        have = _tokens(" ".join([c.customer.name, c.title, c.delivery_place, c.purchase_no,
-                                 c.note, c.comment, c.investor]))
-        s = sum(1 for w in want if any(h[:5] == w[:5] for h in have))
+        s = (3 * hits(_tokens(c.customer.name)) + 2 * hits(_tokens(c.title))
+             + hits(_tokens(" ".join([c.delivery_place, c.purchase_no, c.note, c.comment, c.investor]))))
         if s > score:
             best, score = c, s
     return best
