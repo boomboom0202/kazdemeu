@@ -1,87 +1,70 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { api, fmt, CONTRACT_STATUS, can, canEdit, apiError } from '../api'
+import { Link, useNavigate } from 'react-router-dom'
+import { api, fmt, money, CONTRACT_STATUS, can, canEdit, apiError, download } from '../api'
+import ExpenseImport from '../components/ExpenseImport'
 
 // Реестр как в «Договора.xlsx»: одна строка — одна позиция закупки
 const EMPTY = {
-  purchase_no: '', number: '', own_company: '', platform: '', customer: '', title: '',
+  purchase_no: '', own_company: '', platform: '', customer: '', title: '',
   qty: '', price: '', amount: '', contract_no: '', signed_date: '', deadline: '',
   planned_execution: '', delivery_place: '', delivery_terms: '', phone: '', investor: '',
-  project: '', costs_note: '', payment_note: '', comment: '', note: '', specification: '',
+  costs_note: '', payment_note: '', comment: '', note: '', specification: '',
 }
 const orNull = (v) => (v === '' || v === undefined ? null : v)
-const val = (v) => (v === null || v === undefined ? '' : v)
 
 export default function Contracts({ user }) {
-  // суммы и оплату видят только те, кто работает с деньгами
-  const showMoney = ['admin', 'director', 'manager', 'accountant'].includes(user?.role)
   const mayEdit = canEdit(user, 'contracts.contracts')
-  const seeProjects = can(user, 'projects.projects')
+  const seePay = can(user, 'contracts.payments')
+  const seeExp = can(user, 'contracts.expenses')
+  const mayImportExp = canEdit(user, 'contracts.expenses') && canEdit(user, 'contracts.payments')
+  const navigate = useNavigate()
   const [rows, setRows] = useState([])
+  const [sum, setSum] = useState(null)
   const [customers, setCustomers] = useState([])
   const [companies, setCompanies] = useState([])
-  const [projects, setProjects] = useState([])
   const [status, setStatus] = useState('')
   const [company, setCompany] = useState('')
-  const [project, setProject] = useState('')
   const [q, setQ] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [showCust, setShowCust] = useState(false)
   const [editCustId, setEditCustId] = useState(null)
   const [custForm, setCustForm] = useState({ name: '', phone: '', bin_iin: '', contact_person: '' })
   const [carryOver, setCarryOver] = useState(false)
+  const [expImport, setExpImport] = useState(false)
   const fileRef = useRef()
 
-  const load = () => {
+  const params = () => {
     const p = new URLSearchParams({ page_size: 5000 })
     if (status) p.set('status', status)
     if (q) p.set('search', q)
     if (company) p.set('own_company', company)
-    if (project === 'none') p.set('project__isnull', 'true')
-    else if (project) p.set('project', project)
-    api.get('/contracts/?' + p).then(r => setRows(r.data.results || []))
+    return p
   }
-  useEffect(load, [status, q, company, project])
+  const load = () => {
+    api.get('/contracts/?' + params()).then(r => setRows(r.data.results || []))
+    api.get('/contracts/summary/?' + params()).then(r => setSum(r.data))
+  }
+  useEffect(load, [status, q, company])
   const loadCustomers = () => api.get('/customers/?page_size=2000').then(r => setCustomers(r.data.results || []))
   useEffect(() => {
     loadCustomers()
     api.get('/own-companies/?page_size=200').then(r => setCompanies(r.data.results || [])).catch(() => {})
-    if (seeProjects) api.get('/projects/?page_size=2000').then(r => setProjects(r.data.results || []))
   }, [])
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
-  const resetForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY) }
 
-  const save = async () => {
+  const create = async () => {
     const qty = orNull(form.qty), price = orNull(form.price)
     let amount = form.amount
     if (amount === '' && qty !== null && price !== null) amount = Number(qty) * Number(price)
-    // Даты и ссылки пустыми строками не принимаются — их нужно слать как null
-    const body = {
-      ...form, number: form.number || form.purchase_no, qty, price, amount: amount === '' ? 0 : amount,
-      own_company: orNull(form.own_company), project: orNull(form.project),
-      deadline: orNull(form.deadline), signed_date: orNull(form.signed_date),
-    }
     try {
-      if (editId) await api.patch(`/contracts/${editId}/`, body)
-      else await api.post('/contracts/', body)
-      resetForm(); load()
+      const { data } = await api.post('/contracts/', {
+        ...form, number: form.purchase_no, qty, price, amount: amount === '' ? 0 : amount,
+        own_company: orNull(form.own_company), deadline: orNull(form.deadline), signed_date: orNull(form.signed_date),
+      })
+      navigate(`/contracts/${data.id}`)
     } catch (e) { alert(apiError(e)) }
-  }
-
-  const editContract = (c) => {
-    setEditId(c.id); setShowForm(true); setShowCust(false)
-    const f = {}
-    Object.keys(EMPTY).forEach(k => { f[k] = val(c[k]) })
-    setForm(f)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const setRowProject = async (c, pid) => {
-    try { await api.patch(`/contracts/${c.id}/`, { project: pid || null }); load() }
-    catch (e) { alert(apiError(e)) }
   }
 
   const resetCust = () => { setEditCustId(null); setCustForm({ name: '', phone: '', bin_iin: '', contact_person: '' }) }
@@ -95,20 +78,9 @@ export default function Contracts({ user }) {
     } catch (e) { alert(apiError(e)) }
   }
   const deleteCust = async (c) => {
-    if (!confirm(`Удалить клиента «${c.name}»?`)) return
+    if (!confirm(`Удалить заказчика «${c.name}»?`)) return
     try { await api.delete(`/customers/${c.id}/`); await loadCustomers() }
     catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-  const deleteContract = async (c) => {
-    if (!confirm(`Удалить позицию ${c.purchase_no || c.number} «${c.title}»? Вместе с ней удалятся её платежи, файлы и комментарии.`)) return
-    try { await api.delete(`/contracts/${c.id}/`); load() }
-    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-
-  const exportExcel = async () => {
-    const r = await api.get('/contracts/export_excel/', { responseType: 'blob' })
-    const url = URL.createObjectURL(r.data)
-    const a = document.createElement('a'); a.href = url; a.download = 'Договора.xlsx'; a.click()
   }
 
   const importExcel = async (e) => {
@@ -123,39 +95,52 @@ export default function Contracts({ user }) {
     e.target.value = ''; load(); loadCustomers()
   }
 
-  const total = rows.reduce((a, c) => a + Number(c.amount || 0), 0)
-  const paid = rows.reduce((a, c) => a + Number(c.paid_amount || 0), 0)
+  const minus = (c) => c.money.balance !== null && c.money.expenses > 0 && c.money.balance < 0
 
   return (
     <div>
       <div className="pagehead">
         <h1>Договоры</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn ghost small" onClick={exportExcel}>Экспорт в Excel</button>
+          <button className="btn ghost small btn-read" onClick={() => download('/contracts/export_excel/?' + params(), 'Договора.xlsx')}>Экспорт в Excel</button>
           {mayEdit && <>
             <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
-              title="Статус из файла берётся как есть, минуя цепочку согласований. Нужно при переезде с прежнего учёта.">
+              title="Статус из файла берётся как есть, минуя цепочку. Нужно при переезде с прежнего учёта.">
               <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={carryOver} onChange={e => setCarryOver(e.target.checked)} />
               перенос истории
             </label>
             <button className="btn ghost small" onClick={() => fileRef.current.click()}>Импорт «Договора.xlsx»</button>
             <input type="file" ref={fileRef} accept=".xlsx" style={{ display: 'none' }} onChange={importExcel} />
-            <button className="btn ghost small" onClick={() => setShowCust(s => !s)}>Заказчики</button>
-            <button className="btn small" onClick={() => showForm ? resetForm() : setShowForm(true)}>{showForm ? 'Закрыть' : '+ Позиция'}</button>
           </>}
+          {mayImportExp && <button className="btn ghost small" onClick={() => setExpImport(s => !s)}>Импорт «Расходы.xlsx»</button>}
+          {can(user, 'contracts.customers') && <button className="btn ghost small btn-read" onClick={() => setShowCust(s => !s)}>Заказчики</button>}
+          {mayEdit && <button className="btn small" onClick={() => setShowForm(s => !s)}>{showForm ? 'Закрыть' : '+ Позиция'}</button>}
         </div>
       </div>
 
+      {expImport && <ExpenseImport contracts={rows} onClose={() => setExpImport(false)} onDone={load} />}
+
+      {sum && (
+        <div className="kpi-grid">
+          <div className="kpi"><div className="v">{sum.count}</div><div className="l">позиций в отборе</div></div>
+          <div className="kpi"><div className="v">{fmt(sum.amount)}</div><div className="l">сумма договоров, ₸</div></div>
+          {seePay && <div className="kpi good"><div className="v">{money(sum.paid)}</div><div className="l">оплачено заказчиками</div></div>}
+          {seePay && <div className="kpi"><div className="v">{money(sum.debt)}</div><div className="l">ещё должны</div></div>}
+          {seeExp && <div className="kpi"><div className="v">{money(sum.expenses)}</div><div className="l">расходы по договорам</div></div>}
+          {seeExp && <div className={'kpi ' + (sum.profit < 0 ? 'warn' : 'good')}><div className="v">{money(sum.profit)}</div><div className="l">прибыль (сумма − расходы)</div></div>}
+        </div>
+      )}
+
       {showCust && (
-        <div className="card stitch">
-          <h2>{editCustId ? 'Редактирование заказчика' : 'Новый заказчик'}</h2>
+        <div className={'card stitch' + (canEdit(user, 'contracts.customers') ? '' : ' readonly')}>
+          <h2>{editCustId ? 'Редактирование заказчика' : 'Заказчики'}</h2>
           <div className="formrow">
             <div><label className="f">Название / ФИО</label><input value={custForm.name} onChange={e => setCustForm({ ...custForm, name: e.target.value })} /></div>
             <div><label className="f">Телефон</label><input value={custForm.phone} onChange={e => setCustForm({ ...custForm, phone: e.target.value })} /></div>
             <div><label className="f">БИН/ИИН</label><input value={custForm.bin_iin} onChange={e => setCustForm({ ...custForm, bin_iin: e.target.value })} /></div>
             <div><label className="f">Контактное лицо</label><input value={custForm.contact_person} onChange={e => setCustForm({ ...custForm, contact_person: e.target.value })} /></div>
             <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
-              <button className="btn" onClick={saveCustomer} disabled={!custForm.name}>Сохранить</button>
+              <button className="btn" onClick={saveCustomer} disabled={!custForm.name}>{editCustId ? 'Сохранить' : 'Добавить'}</button>
               {editCustId && <button className="btn ghost" onClick={resetCust}>Отмена</button>}
             </div>
           </div>
@@ -178,7 +163,8 @@ export default function Contracts({ user }) {
 
       {showForm && (
         <div className="card stitch">
-          <h2>{editId ? 'Редактирование позиции' : 'Новая позиция реестра'}</h2>
+          <h2>Новая позиция реестра</h2>
+          <p className="muted" style={{ marginBottom: 10 }}>Обычно позиция появляется из выигранного тендера кнопкой «В договор». Вручную — для договоров без тендера.</p>
           <div className="formrow">
             <div><label className="f">Номер закупки</label><input value={form.purchase_no} onChange={set('purchase_no')} /></div>
             <div><label className="f">С какой фирмы</label>
@@ -202,27 +188,11 @@ export default function Contracts({ user }) {
             <div><label className="f">Номер договора</label><input value={form.contract_no} onChange={set('contract_no')} /></div>
             <div><label className="f">Дата подписания</label><input type="date" value={form.signed_date} onChange={set('signed_date')} /></div>
             <div><label className="f">Срок исполнения</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>
-            <div><label className="f">Планируемый срок (как в реестре)</label><input value={form.planned_execution} placeholder="по заявке" onChange={set('planned_execution')} /></div>
-            {seeProjects && <div><label className="f">Проект</label>
-              <select value={form.project} onChange={set('project')}>
-                <option value="">—</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select></div>}
-          </div>
-          <div className="formrow">
             <div style={{ flex: 2 }}><label className="f">Место поставки</label><input value={form.delivery_place} onChange={set('delivery_place')} /></div>
-            <div style={{ flex: 2 }}><label className="f">Срок поставки</label><input value={form.delivery_terms} onChange={set('delivery_terms')} /></div>
-            <div><label className="f">Телефон</label><input value={form.phone} onChange={set('phone')} /></div>
-          </div>
-          <div className="formrow">
-            <div><label className="f">Инвестор</label><input value={form.investor} onChange={set('investor')} /></div>
-            <div><label className="f">Затраты</label><input value={form.costs_note} onChange={set('costs_note')} /></div>
-            <div><label className="f">Оплата</label><input value={form.payment_note} onChange={set('payment_note')} /></div>
-            <div style={{ flex: 2 }}><label className="f">Комментарии</label><input value={form.comment} onChange={set('comment')} /></div>
-            <div style={{ flex: 2 }}><label className="f">Коментарий</label><input value={form.note} onChange={set('note')} /></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={save} disabled={!(form.number || form.purchase_no) || !form.customer}>Сохранить</button>
-            <button className="btn ghost" onClick={resetForm}>Отмена</button>
+            <button className="btn" onClick={create} disabled={!form.purchase_no || !form.customer || !form.title}>Создать и открыть</button>
+            <button className="btn ghost" onClick={() => { setShowForm(false); setForm(EMPTY) }}>Отмена</button>
           </div>
         </div>
       )}
@@ -232,10 +202,6 @@ export default function Contracts({ user }) {
         <select value={company} onChange={e => setCompany(e.target.value)}>
           <option value="">Все фирмы</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        {seeProjects && <select value={project} onChange={e => setProject(e.target.value)}>
-          <option value="">Все проекты</option><option value="none">Без проекта</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>}
         <select value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">Все статусы</option>
           {Object.entries(CONTRACT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -245,50 +211,34 @@ export default function Contracts({ user }) {
       <div className="card" style={{ padding: 0 }}>
         <div className="tablewrap"><table>
           <thead><tr>
-            <th>Закупка</th><th>Фирма</th><th>Организация</th><th>Предмет</th><th className="num">Кол-во</th>
-            {showMoney && <><th className="num">Цена</th><th className="num">Сумма</th><th className="num">Оплачено</th></>}
-            <th>Договор №</th><th>Подписан</th><th>Срок</th>{seeProjects && <th>Проект</th>}<th>Статус</th>{mayEdit && <th />}
+            <th>Закупка</th><th>Организация</th><th>Предмет</th><th className="num">Кол-во</th><th className="num">Сумма</th>
+            {seePay && <th className="num">Оплачено</th>}
+            {seeExp && <><th className="num">Расходы</th><th className="num">Прибыль</th></>}
+            <th>Договор №</th><th>Срок</th><th>Статус</th>
           </tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={14} className="muted">Позиций нет.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="muted">Позиций нет.</td></tr>}
             {rows.map(c => (
-              <tr key={c.id}>
-                <td style={{ whiteSpace: 'nowrap' }}><Link to={`/contracts/${c.id}`} style={{ fontWeight: 700 }}>{c.purchase_no || c.number}</Link></td>
-                <td>{c.own_company_name || '—'}</td>
-                <td style={{ minWidth: 180 }}>{c.customer_name}</td>
-                <td style={{ minWidth: 200 }}>{c.title}</td>
+              <tr key={c.id} className="clickable" onClick={() => navigate(`/contracts/${c.id}`)}>
+                <td style={{ whiteSpace: 'nowrap' }}><Link to={`/contracts/${c.id}`} onClick={e => e.stopPropagation()} style={{ fontWeight: 700 }}>{c.purchase_no || c.number}</Link>
+                  {c.own_company_name && <div className="muted">{c.own_company_name}</div>}</td>
+                <td style={{ minWidth: 170 }}>{c.customer_name}</td>
+                <td style={{ minWidth: 190 }}>{c.title}</td>
                 <td className="num">{c.qty !== null ? fmt(c.qty) : '—'}</td>
-                {showMoney && <>
-                  <td className="num">{c.price !== null ? fmt(c.price) : '—'}</td>
-                  <td className="num">{fmt(c.amount)}</td>
-                  <td className="num">{fmt(c.paid_amount)}</td>
-                </>}
+                <td className="num">{fmt(c.amount)}</td>
+                {seePay && <td className="num">{money(c.money.paid)}</td>}
+                {seeExp && <><td className="num">{money(c.money.expenses)}</td>
+                  <td className={'num ' + (c.money.profit < 0 ? 'neg' : '')}>{money(c.money.profit)}{minus(c) && <div><span className="pill low">в минусе</span></div>}</td></>}
                 <td style={{ whiteSpace: 'nowrap' }}>{c.contract_no || '—'}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>{c.signed_date || '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{c.deadline || c.planned_execution || '—'}
-                  {c.is_overdue && <span className="pill low" style={{ marginLeft: 6 }}>просрочен</span>}</td>
-                {seeProjects && <td>{mayEdit
-                  ? <select style={{ width: 'auto', maxWidth: 190, fontSize: 12, padding: '2px 4px' }} value={c.project || ''} onChange={e => setRowProject(c, e.target.value)}>
-                      <option value="">—</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  : (c.project ? <Link to={`/projects/${c.project}`}>{c.project_name}</Link> : '—')}</td>}
+                  {c.is_overdue && <div><span className="pill low">просрочен</span></div>}</td>
                 <td><span className="badge" style={{ background: CONTRACT_STATUS[c.status]?.color }}>{CONTRACT_STATUS[c.status]?.label}</span></td>
-                {mayEdit && <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn small ghost" onClick={() => editContract(c)}>Изм.</button>{' '}
-                  <button className="btn small ghost" onClick={() => deleteContract(c)}>Удл.</button>
-                </td>}
               </tr>
             ))}
-            {showMoney && rows.length > 0 && (
-              <tr>
-                <td colSpan={5}><b>Итого позиций: {rows.length}</b></td>
-                <td /><td className="num"><b>{fmt(total)}</b></td><td className="num"><b>{fmt(paid)}</b></td>
-                <td colSpan={seeProjects ? 5 : 4} />{mayEdit && <td />}
-              </tr>
-            )}
           </tbody>
         </table></div>
       </div>
+      {seeExp && seePay && <p className="muted">«В минусе» — по договору потрачено больше, чем заказчик уже заплатил. Прибыль — сумма договора минус расходы: столько останется, когда заказчик заплатит всё.</p>}
     </div>
   )
 }

@@ -1,35 +1,33 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-# Разделы системы (секции), на которые разграничен доступ
-SECTIONS = ["tenders", "contracts", "projects", "workshop", "catalog", "production", "warehouse",
-            "finance", "analytics"]
+# Разделы системы — те же, что в меню
+SECTIONS = ["tenders", "contracts", "workshop", "warehouse", "finance", "analytics"]
 
-# Что роль может ЧИТАТЬ. "*" — всё.
-# Строгая модель: цех не видит финансы, бухгалтер не лезет в производство и т.д.
-# Цех видят все, кому важно, сколько сшито: менеджер отвечает заказчику
-# о сроках, бухгалтер считает сдельную оплату бригадам.
+# Что роль может ЧИТАТЬ. "*" — всё. Кроме разделов целиком можно указать
+# отдельную часть («contracts.contracts»): так технолог видит реестр
+# договоров, но не видит, сколько по ним заплачено и потрачено.
 READ_ACCESS = {
     "admin": {"*"},
     "director": {"*"},
-    "manager": {"tenders", "contracts", "projects", "workshop", "catalog", "production",
-                "warehouse", "analytics"},
-    "technologist": {"catalog", "production", "warehouse", "contracts", "workshop"},
-    "accountant": {"finance", "contracts", "projects", "tenders", "analytics", "workshop"},
-    "warehouse": {"warehouse", "production", "catalog", "workshop"},
-    "worker": {"production", "catalog", "workshop"},
-    "viewer": {"tenders", "contracts", "workshop", "catalog", "production", "warehouse",
-               "analytics"},
+    "manager": {"tenders", "contracts", "workshop", "warehouse", "analytics"},
+    "technologist": {"contracts.contracts", "contracts.customers", "contracts.files",
+                     "contracts.comments", "workshop", "warehouse"},
+    "accountant": {"tenders", "contracts", "workshop", "warehouse", "finance", "analytics"},
+    "warehouse": {"workshop", "warehouse"},
+    "worker": {"workshop"},
+    "viewer": {"tenders", "contracts.contracts", "contracts.customers", "contracts.files",
+               "contracts.comments", "workshop", "warehouse", "analytics"},
 }
 
 # Что роль может ИЗМЕНЯТЬ (создавать/править/удалять)
 WRITE_ACCESS = {
     "admin": {"*"},
     "director": {"tenders"},
-    "manager": {"tenders", "contracts", "projects"},
-    "technologist": {"catalog", "production", "workshop"},
-    "accountant": {"finance", "contracts", "projects"},
-    "warehouse": {"warehouse", "production", "workshop"},
-    "worker": {"production", "workshop"},
+    "manager": {"tenders", "contracts"},
+    "technologist": {"workshop"},
+    "accountant": {"contracts", "finance"},
+    "warehouse": {"warehouse"},
+    "worker": {"workshop.entries"},
     "viewer": set(),
 }
 
@@ -39,24 +37,18 @@ WRITE_ACCESS = {
 AREAS = {
     "tenders": {"tenders": "Лоты и план закупок", "platforms": "Площадки",
                 "companies": "Свои компании"},
-    "contracts": {"contracts": "Договоры", "customers": "Заказчики",
-                  "schedule": "График платежей", "files": "Файлы договора",
-                  "comments": "Комментарии"},
-    "catalog": {"products": "Изделия", "bom": "Состав изделия (BOM)",
-                "routes": "Маршруты изделий", "stages": "Конструктор этапов",
-                "pricelists": "Прайс-листы"},
-    "production": {"orders": "Производственные заказы", "stages": "Этапы заказов"},
-    "warehouse": {"materials": "Материалы", "batches": "Партии и приход",
-                  "movements": "Движения материалов", "suppliers": "Поставщики",
-                  "purchase": "Заявки на закуп", "fg": "Готовая продукция"},
-    "finance": {"entries": "Движение денег", "fixed": "Постоянные расходы",
-                "settings": "Настройки себестоимости", "reports": "Отчёты",
-                "admin": "Административные расходы"},
+    "contracts": {"contracts": "Реестр договоров", "customers": "Заказчики",
+                  "payments": "Оплаты заказчиков", "expenses": "Расходы по договорам",
+                  "files": "Файлы договора", "comments": "Комментарии"},
+    "workshop": {"orders": "Заказы цеха и размеры",
+                 "entries": "Записи этапов: крой, пошив, упаковка…",
+                 "brigades": "Бригады", "stages": "Настройка этапов"},
+    "warehouse": {"materials": "Материалы и остатки", "receipts": "Приход материалов",
+                  "issues": "Выдача в цех и движения", "goods": "Готовая продукция и отгрузка",
+                  "suppliers": "Поставщики"},
+    "finance": {"reports": "Сводка по деньгам", "admin": "Административные расходы",
+                "income": "Прочие поступления"},
     "analytics": {},
-    "projects": {"projects": "Проекты", "expenses": "Расходы по проектам",
-                 "income": "Приход по проектам"},
-    "workshop": {"orders": "Заказы цеха и размеры", "cutting": "Крой и вышивка",
-                 "sewing": "Пошив и бригады", "packing": "Упаковка"},
 }
 
 # Все допустимые ключи: и разделы целиком, и их части
@@ -65,14 +57,15 @@ ALL_KEYS = SECTIONS + [f"{s}.{a}" for s, areas in AREAS.items() for a in areas]
 NONE, READ, WRITE = "none", "read", "write"
 
 
-def _role_level(user, section: str) -> str:
-    """Что даёт роль на раздел, без учёта точечных правил."""
+def _role_level(user, key: str) -> str:
+    """Что даёт роль на ключ, без учёта точечных правил."""
     role = getattr(user, "role", "")
+    section = key.split(".")[0]
     w = WRITE_ACCESS.get(role, set())
-    if "*" in w or section in w:
+    if "*" in w or key in w or section in w:
         return WRITE
     r = READ_ACCESS.get(role, set())
-    if "*" in r or section in r:
+    if "*" in r or key in r or section in r:
         return READ
     return NONE
 
@@ -109,7 +102,7 @@ def resolve(user, key: str) -> str:
     section = key.split(".")[0]
     if section in rules:
         return rules[section]
-    return _role_level(user, section)
+    return _role_level(user, key)
 
 
 def can_read(user, key: str) -> bool:
@@ -131,7 +124,7 @@ def effective_perms(user) -> dict:
 
 class RoleSectionPermission(BasePermission):
     """Чтение и запись разграничены по роли и разделу.
-    ViewSet указывает атрибут `section`."""
+    ViewSet указывает атрибут `access_key` (или `section`)."""
 
     def has_permission(self, request, view):
         from .audit import set_current_user
@@ -139,20 +132,14 @@ class RoleSectionPermission(BasePermission):
         set_current_user(u)
         if not (u and u.is_authenticated):
             return False
-        # access_key точнее section: позволяет закрыть отдельную вкладку
         key = getattr(view, "access_key", None) or getattr(view, "section", None)
         if request.method in SAFE_METHODS:
             return can_read(u, key)
         return can_write(u, key)
 
-class SectionReadPermission(BasePermission):
-    """Проверка доступа на чтение по разделу — для функциональных вьюх.
 
-    ViewSet'ы пользуются RoleSectionPermission, а отчёты и аналитика написаны
-    как @api_view и раньше стояли под голым IsAuthenticated: исходные данные
-    (движения денег, постоянные расходы) были закрыты, а построенные на них
-    отчёты — открыты любому вошедшему.
-    """
+class SectionReadPermission(BasePermission):
+    """Проверка доступа на чтение по ключу — для функциональных вьюх."""
     section = None
 
     def has_permission(self, request, view):
@@ -163,5 +150,5 @@ class SectionReadPermission(BasePermission):
 
 
 def section_read(name):
-    """Готовый класс прав на чтение раздела: section_read("finance")."""
-    return type("SectionRead_" + name, (SectionReadPermission,), {"section": name})
+    """Готовый класс прав на чтение: section_read("finance.reports")."""
+    return type("SectionRead_" + name.replace(".", "_"), (SectionReadPermission,), {"section": name})

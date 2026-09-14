@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { api } from '../api'
 
 export default function Chat() {
-  const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Здравствуйте! Я отвечаю на вопросы по базе: договоры, изделия, склад и финансы. Например: «По каким договорам скоро срок сдачи?» А в режиме «Тендер» подготовлю ценовое предложение.' }])
+  const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Здравствуйте! Я отвечаю на вопросы по базе: тендеры, договоры с расходами, цех по этапам, склад и финансы. Например: «Какой договор в минусе?» или «Сколько сшито по Куртке АУП?» В режиме «Тендер» подготовлю ценовое предложение по похожим договорам.' }])
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('chat')
   const [busy, setBusy] = useState(false)

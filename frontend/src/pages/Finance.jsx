@@ -1,226 +1,381 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, fmt, apiError, can, canEdit} from '../api'
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
+import { api, fmt, apiError, can, canEdit, monthLabel, today, dmy, EXPENSE_KINDS, CONTRACT_STATUS } from '../api'
 import { Loader, LoadError } from '../components/Loader'
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
-import { useIsMobile } from '../useIsMobile'
 
-const COLORS = ['#2e4a8f', '#d97b29', '#1d7a4f', '#b8860b', '#7a5195', '#b03030']
+const TABS = [
+  ['summary', 'finance.reports', 'Сводка'],
+  ['admin', 'finance.admin', 'Административные расходы'],
+  ['expenses', 'contracts.expenses', 'Расходы по договорам'],
+  ['income', 'finance.income', 'Прочие поступления'],
+]
 
+/**
+ * Финансы собираются из трёх мест: оплаты и расходы — в договорах,
+ * административные расходы и прочие поступления — здесь.
+ */
 export default function Finance({ user }) {
-  // страница обслуживает два ключа: движение денег и отчёты —
-  // их могли выдать по отдельности
-  const seeEntries = can(user, 'finance.entries')
-  const roEntries = !canEdit(user, 'finance.entries')
-  const seeReports = can(user, 'finance.reports')
-  const isMobile = useIsMobile()
-  const [cf, setCf] = useState(null)
-  const [pnl, setPnl] = useState(null)
-  const [forecast, setForecast] = useState(null)
-  const [failed, setFailed] = useState(false)
-  const [entries, setEntries] = useState([])
-  const [cats, setCats] = useState([])
-  const [contracts, setContracts] = useState([])
-  const [form, setForm] = useState({ direction: 'in', amount: '', date: new Date().toISOString().slice(0, 10), category: '', contract: '', description: '' })
-  const [showCat, setShowCat] = useState(false)
-  const [editCatId, setEditCatId] = useState(null)
-  const [catForm, setCatForm] = useState({ name: '', kind: 'variable' })
-  const load = () => {
-    setFailed(false)
-    const jobs = []
-    // отчёты и движение денег — разные права, грузим только выданное
-    if (seeReports) jobs.push(
-      api.get('/reports/cashflow/').then(r => setCf(r.data)),
-      api.get('/reports/pnl/').then(r => setPnl(r.data)),
-      api.get('/reports/forecast/').then(r => setForecast(r.data)))
-    if (seeEntries) jobs.push(
-      api.get('/cash-entries/?page_size=30').then(r => setEntries(r.data.results || [])))
-    Promise.all(jobs).catch(() => setFailed(true))
-  }
-  const loadCats = () => {
-    if (seeEntries) api.get('/expense-categories/?page_size=100').then(r => setCats(r.data.results || []))
-  }
-  useEffect(() => {
-    load()
-    loadCats()
-    if (can(user, 'contracts.contracts'))
-      api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || [])).catch(() => {})
-  }, [])
-
-  const add = async () => {
-    await api.post('/cash-entries/', { ...form, category: form.category || null, contract: form.contract || null })
-    setForm({ ...form, amount: '', description: '' }); load()
-  }
-
-  const resetCat = () => { setEditCatId(null); setCatForm({ name: '', kind: 'variable' }) }
-  const saveCat = async () => {
-    try {
-      if (editCatId) { await api.patch(`/expense-categories/${editCatId}/`, catForm); resetCat(); await loadCats() }
-      else {
-        const { data } = await api.post('/expense-categories/', catForm)
-        resetCat(); await loadCats(); setForm(f => ({ ...f, category: data.id }))
-      }
-    } catch (e) { alert(apiError(e)) }
-  }
-  const editCat = (c) => { setEditCatId(c.id); setCatForm({ name: c.name, kind: c.kind }) }
-  const deleteCat = async (c) => {
-    if (!confirm(`Удалить категорию «${c.name}»?`)) return
-    try { await api.delete(`/expense-categories/${c.id}/`); await loadCats() }
-    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-  const delEntry = async (id) => {
-    if (!confirm('Удалить операцию?')) return
-    try { await api.delete(`/cash-entries/${id}/`); load() }
-    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-
-  const reportsPending = seeReports && !(cf && pnl && forecast)
-  if (failed && reportsPending) return <LoadError onRetry={load} />
-  if (reportsPending) return <Loader />
-
+  const visible = TABS.filter(([, key]) => can(user, key))
+  const [tab, setTab] = useState(visible[0]?.[0])
   return (
     <div>
-      <div className="pagehead">
-        <h1>Финансы</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link className="btn ghost small" to="/cost-price">Себестоимость и постоянные расходы</Link>
-          {canEdit(user, 'finance.entries') && <button className="btn ghost small" onClick={() => setShowCat(s => !s)}>+ Категория расхода</button>}
-        </div>
+      <div className="pagehead"><h1>Финансы</h1></div>
+      <div className="tabs">
+        {visible.map(([t, , label]) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label}</button>)}
+      </div>
+      {tab === 'summary' && <Summary />}
+      {tab === 'admin' && <AdminExpenses canWrite={canEdit(user, 'finance.admin')} />}
+      {tab === 'expenses' && <AllExpenses />}
+      {tab === 'income' && <OtherIncome canWrite={canEdit(user, 'finance.income')} />}
+    </div>
+  )
+}
+
+function Summary() {
+  const [d, setD] = useState(null)
+  const [failed, setFailed] = useState(false)
+  const [sort, setSort] = useState('balance')
+  const [onlyMinus, setOnlyMinus] = useState(false)
+  const load = () => { setFailed(false); api.get('/finance/summary/').then(r => setD(r.data)).catch(() => setFailed(true)) }
+  useEffect(load, [])
+  const rows = useMemo(() => {
+    if (!d) return []
+    const list = d.contracts.filter(c => !onlyMinus || (c.expenses > 0 && c.balance < 0))
+    return [...list].sort((a, b) => sort === 'amount' ? b.amount - a.amount : a[sort] - b[sort])
+  }, [d, sort, onlyMinus])
+  if (failed) return <LoadError onRetry={load} />
+  if (!d) return <Loader />
+  const chart = d.months.filter(m => m.month !== 'none').map(m => ({ ...m, label: monthLabel(m.month),
+    spent: m.contract_expenses + m.admin_expenses, got: m.income + m.other_income }))
+  const noDate = d.months.find(m => m.month === 'none')
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi good"><div className="v">{fmt(d.paid)}</div><div className="l">получено от заказчиков</div></div>
+        <div className="kpi"><div className="v">{fmt(d.debt)}</div><div className="l">заказчики ещё должны</div></div>
+        <div className="kpi"><div className="v">{fmt(d.contract_expenses)}</div><div className="l">расходы по договорам</div></div>
+        <div className="kpi"><div className="v">{fmt(d.admin_expenses)}</div><div className="l">административные</div></div>
+        {d.other_income > 0 && <div className="kpi"><div className="v">{fmt(d.other_income)}</div><div className="l">прочие поступления</div></div>}
+        <div className={'kpi ' + (d.cash < 0 ? 'warn' : 'good')}><div className="v">{fmt(d.cash)}</div><div className="l">деньги сейчас: получено − потрачено</div></div>
+        <div className={'kpi ' + (d.expected_result < 0 ? 'warn' : 'good')}><div className="v">{fmt(d.expected_result)}</div><div className="l">итог, когда заказчики доплатят</div></div>
       </div>
 
-      {showCat && (
+      {chart.length > 0 && (
         <div className="card stitch">
-          <h2>{editCatId ? 'Редактирование категории' : 'Новая категория расхода'}</h2>
-          <div className="formrow">
-            <div><label className="f">Название категории</label><input value={catForm.name} onChange={e => setCatForm({ ...catForm, name: e.target.value })} /></div>
-            <div><label className="f">Тип</label>
-              <select value={catForm.kind} onChange={e => setCatForm({ ...catForm, kind: e.target.value })}>
-                <option value="variable">Переменные</option><option value="fixed">Постоянные</option>
-              </select></div>
-            <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
-              <button className="btn" onClick={saveCat} disabled={!catForm.name}>Сохранить</button>
-              {editCatId && <button className="btn ghost" onClick={resetCat}>Отмена</button>}
-            </div>
-          </div>
-          <table>
-            <thead><tr><th>Категория</th><th>Тип</th><th /></tr></thead>
+          <h2>Приход и расход по месяцам</h2>
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={chart}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e3e1d9" />
+              <XAxis dataKey="label" fontSize={11} />
+              <YAxis fontSize={10} tickFormatter={v => Math.round(v / 1e6) + ' млн'} />
+              <Tooltip formatter={v => fmt(v) + ' ₸'} />
+              <Legend />
+              <Bar dataKey="got" name="Приход" fill="#2e4a8f" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="contract_expenses" name="Расходы договоров" stackId="s" fill="#c9c4b8" />
+              <Bar dataKey="admin_expenses" name="Административные" stackId="s" fill="#d97b29" radius={[4, 4, 0, 0]} />
+              <Line dataKey="cumulative" name="Нарастающим итогом" stroke="#1d7a4f" strokeWidth={2.5} dot={{ r: 3 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          {noDate && <p className="muted">Без даты (строки из «Расходы.xlsx» дат не имеют): приход {fmt(noDate.income)}, расходы договоров {fmt(noDate.contract_expenses)} — в график не попали, но в итогах учтены.</p>}
+        </div>
+      )}
+
+      <div className="grid2 wide-left">
+        <div className="card" style={{ padding: 0 }}>
+          <div className="toolbar"><b>По месяцам</b></div>
+          <div className="tablewrap"><table className="sheet">
+            <thead><tr><th>Месяц</th><th className="num">Приход</th><th className="num">Расходы договоров</th><th className="num">Адм.</th><th className="num">Итог</th><th className="num">Нарастающим</th></tr></thead>
             <tbody>
-              {cats.map(c => (
-                <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td>{c.kind === 'fixed' ? 'постоянные' : 'переменные'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn small ghost" onClick={() => editCat(c)}>Изм.</button>{' '}
-                    <button className="btn small ghost" onClick={() => deleteCat(c)}>Удл.</button>
-                  </td>
+              {d.months.length === 0 && <tr><td colSpan={6} className="muted">Движений денег нет.</td></tr>}
+              {d.months.map(m => (
+                <tr key={m.month}>
+                  <td>{monthLabel(m.month)}</td>
+                  <td className="num">{fmt(m.income + m.other_income)}</td>
+                  <td className="num">{fmt(m.contract_expenses)}</td>
+                  <td className="num">{fmt(m.admin_expenses)}</td>
+                  <td className={'num ' + (m.net < 0 ? 'neg' : 'pos')}>{fmt(m.net)}</td>
+                  <td className="num">{fmt(m.cumulative)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
-          <p className="muted">Категории (аренда, зарплата, материалы…) нужны для структуры расходов в ОПиУ.</p>
+          </table></div>
+        </div>
+        <div className="card">
+          <h2>Куда уходят деньги договоров</h2>
+          {d.kinds.length === 0 && <p className="muted">Расходов нет.</p>}
+          {d.kinds.map(k => {
+            const share = d.contract_expenses ? Math.round(k.total / d.contract_expenses * 1000) / 10 : 0
+            return (
+              <div key={k.kind} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{k.label}</span><span className="num">{fmt(k.total)} · {share}%</span></div>
+                <div className="kindbar" style={{ width: Math.max(2, share) + '%' }} />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 0 }}>
+        <div className="toolbar">
+          <b>По договорам</b>
+          <label className="check"><input type="checkbox" checked={onlyMinus} onChange={e => setOnlyMinus(e.target.checked)} />только в минусе ({d.minus_count})</label>
+          <select style={{ width: 'auto', marginLeft: 'auto' }} value={sort} onChange={e => setSort(e.target.value)}>
+            <option value="balance">сначала худший остаток</option>
+            <option value="profit">сначала меньшая прибыль</option>
+            <option value="amount">сначала крупные</option>
+          </select>
+        </div>
+        <div className="tablewrap"><table className="sheet">
+          <thead><tr><th>Закупка</th><th>Заказчик · предмет</th><th>Статус</th><th className="num">Сумма</th><th className="num">Оплачено</th><th className="num">Долг</th><th className="num">Расходы</th><th className="num">Прибыль</th><th className="num">Остаток</th></tr></thead>
+          <tbody>
+            {rows.map(c => (
+              <tr key={c.id}>
+                <td style={{ whiteSpace: 'nowrap' }}><Link to={`/contracts/${c.id}`}><b>{c.number}</b></Link></td>
+                <td>{c.customer}<div className="muted">{c.title}</div></td>
+                <td><span className="badge" style={{ background: CONTRACT_STATUS[c.status]?.color }}>{c.status_display}</span></td>
+                <td className="num">{fmt(c.amount)}</td><td className="num">{fmt(c.paid)}</td><td className="num">{fmt(c.debt)}</td>
+                <td className="num">{fmt(c.expenses)}</td>
+                <td className={'num ' + (c.profit < 0 ? 'neg' : '')}>{fmt(c.profit)}</td>
+                <td className={'num ' + (c.expenses > 0 && c.balance < 0 ? 'neg' : '')}>{fmt(c.balance)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+    </>
+  )
+}
+
+function AdminExpenses({ canWrite }) {
+  const fileRef = useRef()
+  const [sum, setSum] = useState(null)
+  const [cat, setCat] = useState('')
+  const [month, setMonth] = useState('')
+  const [lines, setLines] = useState([])
+  const [failed, setFailed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const thisMonth = today().slice(0, 7)
+  const [form, setForm] = useState({ category: '', amount: '', comment: '', month: thisMonth })
+  const [newCat, setNewCat] = useState({ name: '', monthly_plan: '' })
+
+  const loadSummary = () => {
+    setFailed(false)
+    return api.get('/admin-expenses/summary/').then(r => {
+      setSum(r.data)
+      const first = r.data.categories[0]
+      if (first) { setCat(c => c || String(first.id)); setForm(f => ({ ...f, category: f.category || String(first.id) })) }
+    }).catch(() => setFailed(true))
+  }
+  const loadLines = () => {
+    if (!cat) return setLines([])
+    api.get(`/admin-expenses/?page_size=5000&category=${cat}`).then(r => setLines(r.data.results || []))
+  }
+  useEffect(() => { loadSummary() }, [])
+  useEffect(() => { loadLines() }, [cat])
+  const reload = () => { loadSummary(); loadLines() }
+
+  const shown = useMemo(() => lines.filter(l => !month
+    || (month === 'none' ? !l.month : (l.month || '').slice(0, 7) === month)), [lines, month])
+
+  if (failed && !sum) return <LoadError onRetry={reload} />
+  if (!sum) return <Loader />
+
+  const run = async (fn) => { try { await fn(); reload() } catch (e) { alert(apiError(e)) } }
+  const importFile = async (e) => {
+    const f = e.target.files[0]; if (!f) return
+    const fd = new FormData(); fd.append('file', f); setBusy(true)
+    try {
+      const { data: r } = await api.post('/admin-expenses/import_excel/', fd)
+      alert(`Загружено: строк ${r.expenses}, новых статей ${r.categories_created}.` +
+        (r.without_month ? `\nБез месяца: ${r.without_month} — в комментариях месяц не указан, проставьте в строке.` : '') +
+        (r.warnings.length ? `\n\nЗамечания:\n• ${r.warnings.join('\n• ')}` : ''))
+    } catch (err) { alert(apiError(err)) }
+    finally { setBusy(false); e.target.value = ''; reload() }
+  }
+  const shownTotal = shown.reduce((a, l) => a + Number(l.amount), 0)
+
+  return (
+    <div className={canWrite ? '' : 'readonly'}>
+      <div className="pagehead" style={{ marginTop: 0 }}>
+        <span className="muted">Лист «Расход административные»: оклады, аренда, прочие траты цеха.</span>
+        {canWrite && <><button className="btn ghost small" disabled={busy} onClick={() => fileRef.current.click()}>
+          {busy ? 'Загружаю…' : 'Импорт «Расход административные.xlsx»'}</button>
+          <input type="file" ref={fileRef} accept=".xlsx" style={{ display: 'none' }} onChange={importFile} /></>}
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi"><div className="v">{fmt(sum.total)}</div><div className="l">всего{sum.plan_total ? ` · план ${fmt(sum.plan_total)}/мес` : ''}</div></div>
+        {sum.categories.map(c => (
+          <div key={c.id} className="kpi" style={{ cursor: 'pointer' }} onClick={() => { setCat(String(c.id)); setMonth('') }}>
+            <div className="v">{fmt(c.total)}</div><div className="l">{c.name}{c.monthly_plan ? ` · план ${fmt(c.monthly_plan)}` : ''}</div>
+          </div>
+        ))}
+      </div>
+
+      {sum.months.length > 0 && (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="toolbar"><b>По месяцам</b><span className="muted">красным — больше плана статьи. Клик по ячейке — строки ниже.</span></div>
+          <div className="tablewrap"><table className="matrix sheet">
+            <thead><tr><th>Статья</th><th className="num">План/мес</th>{sum.months.map(m => <th key={m} className="num">{monthLabel(m)}</th>)}<th className="num">Итого</th></tr></thead>
+            <tbody>
+              {sum.categories.map(c => (
+                <tr key={c.id}>
+                  <td><b>{c.name}</b></td>
+                  <td className="num muted">{c.monthly_plan ? fmt(c.monthly_plan) : ''}</td>
+                  {sum.months.map(m => (
+                    <td key={m} className={'num cell' + (String(cat) === String(c.id) && month === m ? ' sel' : '') +
+                      (c.monthly_plan && m !== 'none' && c.months[m] > c.monthly_plan ? ' neg' : '')}
+                      onClick={() => { setCat(String(c.id)); setMonth(month === m && String(cat) === String(c.id) ? '' : m) }}>
+                      {c.months[m] ? fmt(c.months[m]) : ''}</td>
+                  ))}
+                  <td className="num"><b>{fmt(c.total)}</b></td>
+                </tr>
+              ))}
+              <tr className="total"><td>Итого</td><td className="num">{sum.plan_total ? fmt(sum.plan_total) : ''}</td>
+                {sum.months.map(m => <td key={m} className="num">{fmt(sum.by_month[m])}</td>)}
+                <td className="num">{fmt(sum.total)}</td></tr>
+            </tbody>
+          </table></div>
         </div>
       )}
-      {seeReports && <>
-      <div className="kpi-grid">
-        <div className={`kpi ${cf.balance >= 0 ? 'good' : 'warn'}`}><div className="v">{fmt(cf.balance)} ₸</div><div className="l">Остаток в кассе</div></div>
-        <div className="kpi"><div className="v">{fmt(pnl.income)} ₸</div><div className="l">Доход (всего)</div></div>
-        <div className="kpi"><div className="v">{fmt(pnl.total_expenses)} ₸</div><div className="l">Расход (всего)</div></div>
-        <div className={`kpi ${pnl.net_profit >= 0 ? 'good' : 'warn'}`}><div className="v">{fmt(pnl.net_profit)} ₸</div><div className="l">Чистая прибыль (ОПиУ)</div></div>
-        <div className="kpi"><div className="v">{pnl.profitability_percent}%</div><div className="l">Рентабельность</div></div>
-        <div className="kpi"><div className="v">{fmt(forecast.expected_total)} ₸</div><div className="l">Ожидаемые поступления (воронка)</div></div>
-      </div>
 
-      <div className="grid2">
+      {canWrite && (
         <div className="card stitch">
-          <h2>ДДС / Cash Flow — по месяцам</h2>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={cf.series}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e3e1d9" />
-              <XAxis dataKey="month" fontSize={11} /><YAxis fontSize={10} tickFormatter={v => v / 1000 + 'k'} />
-              <Tooltip formatter={v => fmt(v) + ' ₸'} /><Legend />
-              <Area dataKey="income" name="Доход" stroke="#2e4a8f" fill="#2e4a8f33" />
-              <Area dataKey="expense" name="Расход" stroke="#b03030" fill="#b0303022" />
-              <Area dataKey="balance" name="Остаток (нараст.)" stroke="#d97b29" fill="transparent" strokeWidth={2.5} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="card stitch">
-          <h2>Структура расходов</h2>
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-            <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={230}>
-              <PieChart>
-                <Pie data={pnl.expenses} dataKey="total" nameKey="category" innerRadius={45} outerRadius={85}>
-                  {pnl.expenses.map((e, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={v => fmt(v) + ' ₸'} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 13 }}>
-              {pnl.expenses.map((e, i) => (
-                <div key={i} style={{ marginBottom: 4 }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, background: COLORS[i % COLORS.length], borderRadius: 3, marginRight: 6 }} />
-                  {e.category}: <b>{fmt(e.total)}</b> <span className="muted">({e.kind === 'fixed' ? 'постоянные' : 'переменные'})</span>
-                </div>
-              ))}
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--line)' }}>
-                Постоянные: <b>{fmt(pnl.fixed_total)}</b> · Переменные: <b>{fmt(pnl.variable_total)}</b>
-              </div>
-            </div>
+          <div className="formrow">
+            <div><label className="f">Статья</label>
+              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                <option value="">— выбрать —</option>
+                {sum.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></div>
+            <div><label className="f">Сумма</label><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+            <div style={{ flex: 2 }}><label className="f">Комментарий</label>
+              <input value={form.comment} placeholder="оклад конструктор, аренда цех…" onChange={e => setForm({ ...form, comment: e.target.value })} /></div>
+            <div><label className="f">Месяц</label><input type="month" value={form.month} onChange={e => setForm({ ...form, month: e.target.value })} /></div>
+            <div style={{ alignSelf: 'flex-end' }}><button className="btn" disabled={!form.category || !form.amount} onClick={() => run(async () => {
+              await api.post('/admin-expenses/', { category: form.category, amount: form.amount, comment: form.comment, month: form.month ? `${form.month}-01` : null })
+              setForm({ ...form, amount: '', comment: '' }); setCat(String(form.category))
+            })}>Добавить</button></div>
+          </div>
+          <div className="formrow" style={{ maxWidth: 620 }}>
+            <div><input value={newCat.name} placeholder="Новая статья: Налоги, Реклама…" onChange={e => setNewCat({ ...newCat, name: e.target.value })} /></div>
+            <div><input type="number" value={newCat.monthly_plan} placeholder="план в месяц, ₸" onChange={e => setNewCat({ ...newCat, monthly_plan: e.target.value })} /></div>
+            <div style={{ flex: '0 0 auto' }}><button className="btn ghost" disabled={!newCat.name.trim()} onClick={() => run(async () => {
+              const { data } = await api.post('/admin-categories/', { name: newCat.name.trim(), monthly_plan: newCat.monthly_plan || 0, position: sum.categories.length })
+              setNewCat({ name: '', monthly_plan: '' }); setCat(String(data.id)); setForm(f => ({ ...f, category: String(data.id) }))
+            })}>+ статья</button></div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="card">
-        <h2>Ожидаемые поступления (прогноз по воронке)</h2>
-        <table>
-          <thead><tr><th>Договор</th><th>Клиент</th><th>Статус</th><th className="num">Остаток</th><th className="num">Вероятность</th><th className="num">Взвешенно</th></tr></thead>
-          <tbody>
-            {forecast.funnel.map((f, i) => (
-              <tr key={i}><td>{f.contract}</td><td>{f.customer}</td><td>{f.status}</td>
-                <td className="num">{fmt(f.remaining)}</td><td className="num">{(f.probability * 100).toFixed(0)}%</td>
-                <td className="num" style={{ fontWeight: 700 }}>{fmt(f.weighted)}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      </>}
-
-      {seeEntries && <div className={roEntries ? 'readonly' : ''}>
-      {roEntries && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Движение денег доступно вам без права изменения.</div>}
-      <div className="card stitch">
-        <h2>Новая операция</h2>
-        <div className="formrow">
-          <div><label className="f">Тип</label>
-            <select value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}>
-              <option value="in">Поступление</option><option value="out">Расход</option>
-            </select></div>
-          <div><label className="f">Сумма</label><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-          <div><label className="f">Дата</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-          <div><label className="f">Категория (для расходов)</label>
-            <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-              <option value="">—</option>{cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select></div>
-          <div><label className="f">Договор</label>
-            <select value={form.contract} onChange={e => setForm({ ...form, contract: e.target.value })}>
-              <option value="">—</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.number}</option>)}
-            </select></div>
-          <div><label className="f">Описание</label><input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-          <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={add} disabled={!form.amount}>Добавить</button></div>
+      {sum.categories.length > 0 && (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="toolbar">
+            <select style={{ width: 'auto' }} value={cat} onChange={e => setCat(e.target.value)}>
+              {sum.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select style={{ width: 'auto' }} value={month} onChange={e => setMonth(e.target.value)}>
+              <option value="">все месяцы</option>
+              {sum.months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            </select>
+            <span className="muted">строк {shown.length}, на <b>{fmt(shownTotal)}</b> ₸</span>
+            {canWrite && cat && <input type="number" style={{ width: 150, marginLeft: 'auto' }} placeholder="план в месяц"
+              key={cat} defaultValue={sum.categories.find(c => String(c.id) === cat)?.monthly_plan || ''}
+              onBlur={e => run(() => api.patch(`/admin-categories/${cat}/`, { monthly_plan: e.target.value || 0 }))} title="План статьи в месяц" />}
+          </div>
+          <div className="tablewrap"><table className="sheet">
+            <thead><tr><th>Месяц</th><th className="num">Сумма</th><th>Комментарий</th><th /></tr></thead>
+            <tbody>
+              {shown.length === 0 && <tr><td colSpan={4} className="muted">Строк нет.</td></tr>}
+              {shown.map(l => (
+                <tr key={l.id}>
+                  <td>{canWrite
+                    ? <input type="month" style={{ width: 150 }} defaultValue={l.month ? l.month.slice(0, 7) : ''}
+                        onBlur={e => (e.target.value || null) !== (l.month ? l.month.slice(0, 7) : null) &&
+                          run(() => api.patch(`/admin-expenses/${l.id}/`, { month: e.target.value ? `${e.target.value}-01` : null }))} />
+                    : monthLabel(l.month ? l.month.slice(0, 7) : null)}</td>
+                  <td className="num">{fmt(l.amount)}</td>
+                  <td>{l.comment}{l.source === 'excel' && <span className="src">xlsx</span>}</td>
+                  <td>{canWrite && <button className="btn small ghost" onClick={() => confirm(`Удалить ${fmt(l.amount)} «${l.comment}»?`) && run(() => api.delete(`/admin-expenses/${l.id}/`))}>✕</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
         </div>
-        <table>
-          <thead><tr><th>Дата</th><th>Тип</th><th className="num">Сумма</th><th>Категория</th><th>Договор</th><th>Описание</th><th /></tr></thead>
-          <tbody>
-            {entries.map(e => (
-              <tr key={e.id}><td>{e.date}</td>
-                <td>{e.direction === 'in' ? <span className="pill ok">приход</span> : <span className="pill low">расход</span>}</td>
-                <td className="num">{fmt(e.amount)}</td><td>{e.category_name || '—'}</td><td>{e.contract_number || '—'}</td><td>{e.description}</td>
-                <td><button className="btn small ghost" onClick={() => delEntry(e.id)}>Удл.</button></td></tr>
-            ))}
-          </tbody>
-        </table>
+      )}
+    </div>
+  )
+}
+
+function AllExpenses() {
+  const [rows, setRows] = useState(null)
+  const [q, setQ] = useState('')
+  const [kind, setKind] = useState('')
+  useEffect(() => {
+    const p = new URLSearchParams({ page_size: 5000 })
+    if (q) p.set('search', q)
+    if (kind) p.set('kind', kind)
+    api.get('/contract-expenses/?' + p).then(r => setRows(r.data.results || []))
+  }, [q, kind])
+  if (!rows) return <Loader />
+  const total = rows.reduce((a, e) => a + Number(e.amount), 0)
+  return (
+    <div className="card" style={{ padding: 0 }}>
+      <div className="toolbar">
+        <input style={{ maxWidth: 320 }} placeholder="Поиск: комментарий, закупка, предмет" value={q} onChange={e => setQ(e.target.value)} />
+        <select style={{ width: 'auto' }} value={kind} onChange={e => setKind(e.target.value)}>
+          <option value="">все виды</option>{EXPENSE_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <span className="muted">строк {rows.length} на <b>{fmt(total)}</b> ₸</span>
       </div>
+      <div className="tablewrap"><table className="sheet">
+        <thead><tr><th>Договор</th><th className="num">Сумма</th><th>Комментарий</th><th>Вид</th><th>Дата</th></tr></thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={5} className="muted">Ничего не найдено.</td></tr>}
+          {rows.map(e => (
+            <tr key={e.id}>
+              <td><Link to={`/contracts/${e.contract}`}><b>{e.contract_number}</b></Link><div className="muted">{e.contract_title}</div></td>
+              <td className="num">{fmt(e.amount)}</td>
+              <td>{e.comment}{e.source === 'excel' && <span className="src">xlsx</span>}</td>
+              <td>{e.kind_display}</td>
+              <td className="muted">{e.date ? dmy(e.date) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table></div>
+    </div>
+  )
+}
+
+function OtherIncome({ canWrite }) {
+  const [rows, setRows] = useState([])
+  const [form, setForm] = useState({ amount: '', comment: '', date: today() })
+  const load = () => api.get('/other-income/?page_size=1000').then(r => setRows(r.data.results || []))
+  useEffect(() => { load() }, [])
+  const run = async (fn) => { try { await fn(); load() } catch (e) { alert(apiError(e)) } }
+  return (
+    <div className="card" style={{ padding: 0 }}>
+      {canWrite && <div style={{ padding: '14px 16px 0' }}>
+        <p className="muted" style={{ marginBottom: 8 }}>Деньги не от заказчика по договору: заём, вложение инвестора. Оплаты заказчиков пишутся в сам договор.</p>
+        <div className="formrow">
+          <div><label className="f">Сумма</label><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+          <div style={{ flex: 2 }}><label className="f">Комментарий</label><input value={form.comment} placeholder="заём, инвестор" onChange={e => setForm({ ...form, comment: e.target.value })} /></div>
+          <div><label className="f">Дата</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
+          <div style={{ alignSelf: 'flex-end', flex: '0 0 auto' }}><button className="btn" disabled={!form.amount}
+            onClick={() => run(async () => { await api.post('/other-income/', form); setForm({ ...form, amount: '', comment: '' }) })}>Добавить</button></div>
+        </div>
       </div>}
+      <table className="sheet">
+        <thead><tr><th>Дата</th><th className="num">Сумма</th><th>Комментарий</th><th /></tr></thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={4} className="muted">Записей нет.</td></tr>}
+          {rows.map(r => (
+            <tr key={r.id}><td>{dmy(r.date)}</td><td className="num">{fmt(r.amount)}</td><td>{r.comment}</td>
+              <td>{canWrite && <button className="btn small ghost" onClick={() => confirm('Удалить запись?') && run(() => api.delete(`/other-income/${r.id}/`))}>✕</button>}</td></tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

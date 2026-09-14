@@ -1,5 +1,11 @@
-"""Демо-данные: python manage.py seed_demo"""
-from datetime import date, timedelta
+"""Демо-данные: python manage.py seed_demo
+
+Вся цепочка на примерах: тендер → договор с расходами и оплатами → заказ
+цеха по этапам → склад и финансы. Данные создаются только в пустой базе
+(если договоров нет) — введённое руками не затирается.
+"""
+from datetime import timedelta
+from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -9,192 +15,140 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         from accounts.models import User
-        from contracts.models import Customer, Contract, PaymentScheduleItem, Comment
-        from warehouse.models import Supplier, Material, MaterialBatch
-        from production.models import (Product, BOMItem, ProductionOrder, PriceList,
-                                       PriceListItem, ensure_default_stages)
-        from finance.models import ExpenseCategory, CashEntry, FixedCost, CostSettings
+        from contracts.models import Customer, Contract, ContractPayment, ContractExpense, Comment
+        from contracts.excel import classify
+        from finance.models import AdminCategory, AdminExpense, OtherIncome
         from tenders.models import Tender, Platform, OwnCompany
+        from warehouse.models import Supplier, Material, MaterialBatch, StockMovement
+        from workshop.models import (Brigade, WorkOrder, StageTemplate, StageEntry, EntryMaterial,
+                                     SewingJob, SewingProgress, ensure_default_stages)
+        from workshop.calc import apply_sizes, parse_sizes, set_route
 
         def demo_user(username, password, **fields):
-            """Пароль ставится только при создании пользователя.
-
-            Раньше set_password вызывался безусловно, а seed_demo выполняется
-            при каждом старте контейнера — то есть и при деплое, и когда
-            бесплатный Render будит уснувший сервис. Из-за этого смена пароля
-            админа молча откатывалась к демонстрационной.
-            """
+            """Пароль ставится только при создании: seed_demo выполняется при каждом
+            старте контейнера, и сменённый пароль не должен откатываться."""
             user, created = User.objects.get_or_create(username=username, defaults=fields)
             if created:
                 user.set_password(password)
                 user.save()
             return user
 
-        admin = demo_user("admin", "admin12345",
-                          role="admin", is_staff=True, is_superuser=True, first_name="Админ")
+        demo_user("admin", "admin12345", role="admin", is_staff=True, is_superuser=True, first_name="Админ")
         manager = demo_user("aigerim", "demo12345", role="manager", first_name="Айгерим")
-        worker = demo_user("bolat", "demo12345", role="worker", first_name="Болат")
-        techno = demo_user("saule", "demo12345", role="technologist", first_name="Сауле")
-        buh = demo_user("marat", "demo12345", role="accountant", first_name="Марат")
-
+        demo_user("saule", "demo12345", role="technologist", first_name="Сауле")
+        demo_user("marat", "demo12345", role="accountant", first_name="Марат")
+        demo_user("bolat", "demo12345", role="worker", first_name="Болат")
+        demo_user("dana", "demo12345", role="warehouse", first_name="Дана")
         ensure_default_stages()
 
-        sup1, _ = Supplier.objects.get_or_create(name="ТОО Textile KZ", defaults=dict(phone="+7 701 111 22 33"))
-        sup2, _ = Supplier.objects.get_or_create(name="ИП Фурнитура Юг")
-
-        mats = {}
-        for name, sku, unit, minst, sup in [
-            ("Ткань бязь белая", "MAT-001", "м", 100, sup1),
-            ("Ткань спецодежда саржа", "MAT-002", "м", 150, sup1),
-            ("Нитки армированные", "MAT-003", "шт", 30, sup2),
-            ("Пуговицы 18мм", "MAT-004", "шт", 500, sup2),
-            ("Молния 60см", "MAT-005", "шт", 100, sup2),
-        ]:
-            m, _ = Material.objects.get_or_create(sku=sku, defaults=dict(
-                name=name, unit=unit, min_stock=minst, default_supplier=sup))
-            mats[sku] = m
-
-        if not MaterialBatch.objects.exists():
-            MaterialBatch.objects.create(material=mats["MAT-001"], supplier=sup1, batch_no="B-101",
-                                         qty=800, unit_price=850, received_at=date.today() - timedelta(days=40))
-            MaterialBatch.objects.create(material=mats["MAT-002"], supplier=sup1, batch_no="B-102",
-                                         qty=800, unit_price=1400, received_at=date.today() - timedelta(days=35))
-            MaterialBatch.objects.create(material=mats["MAT-003"], supplier=sup2, batch_no="B-103",
-                                         qty=200, unit_price=300, received_at=date.today() - timedelta(days=30))
-            MaterialBatch.objects.create(material=mats["MAT-004"], supplier=sup2, batch_no="B-104",
-                                         qty=3000, unit_price=25, received_at=date.today() - timedelta(days=30))
-            MaterialBatch.objects.create(material=mats["MAT-005"], supplier=sup2, batch_no="B-105",
-                                         qty=600, unit_price=180, received_at=date.today() - timedelta(days=25))
-
-        prods = {}
-        for name, sku, price, labor, over, bom in [
-            ("Халат медицинский", "PRD-001", 6500, 900, 400,
-             [("MAT-001", 2.5), ("MAT-003", 0.2), ("MAT-004", 6)]),
-            ("Костюм рабочий (куртка+брюки)", "PRD-002", 14500, 2200, 800,
-             [("MAT-002", 3.8), ("MAT-003", 0.4), ("MAT-005", 1), ("MAT-004", 8)]),
-            ("Фартук поварской", "PRD-003", 3200, 450, 200,
-             [("MAT-001", 1.2), ("MAT-003", 0.1)]),
-        ]:
-            p, _ = Product.objects.get_or_create(sku=sku, defaults=dict(
-                name=name, base_price=price, labor_cost=labor, overhead_cost=over))
-            prods[sku] = p
-            for msku, qty in bom:
-                BOMItem.objects.get_or_create(product=p, material=mats[msku], defaults=dict(qty=qty))
-
-        cust1, _ = Customer.objects.get_or_create(name="ГКП Городская больница №1",
-                                                  defaults=dict(phone="+7 725 400 11 22"))
-        cust2, _ = Customer.objects.get_or_create(name="ТОО СтройМонтаж")
-        cust3, _ = Customer.objects.get_or_create(name="Сеть кафе Dastarkhan")
-
-        pl, _ = PriceList.objects.get_or_create(name="Опт для больниц", customer=cust1)
-        PriceListItem.objects.get_or_create(price_list=pl, product=prods["PRD-001"], defaults=dict(price=5900))
+        if Contract.objects.exists():
+            self.stdout.write("Договоры уже есть — демо-данные не добавляются.")
+            return
 
         today = timezone.localdate()
-        c1, created = Contract.objects.get_or_create(number="Д-2026-014", defaults=dict(
-            customer=cust1, title="Пошив 300 медицинских халатов", status="in_progress",
-            amount=300 * 5900, signed_date=today - timedelta(days=50),
-            deadline=today + timedelta(days=20), manager=manager,
-            specification="Халат медицинский, бязь белая, ГОСТ. Размеры 44–56, логотип на кармане."))
-        if created:
-            PaymentScheduleItem.objects.create(contract=c1, due_date=today - timedelta(days=40),
-                                               amount=885000, paid_amount=885000, paid_date=today - timedelta(days=38),
-                                               note="Аванс 50%")
-            PaymentScheduleItem.objects.create(contract=c1, due_date=today + timedelta(days=25), amount=885000,
-                                               note="Окончательный расчёт")
-            Comment.objects.create(contract=c1, author=manager, importance="important",
-                                   text="Заказчик просит логотип по новому брендбуку — уточнить макет до кроя!")
-            Comment.objects.create(contract=c1, author=admin, text="Ткань по партии B-101 зарезервирована.")
+        own, _ = OwnCompany.objects.get_or_create(name="Каз Демеу")
+        plats = {n: Platform.objects.get_or_create(name=n)[0] for n in ["госзакуп", "Самрук-Казына"]}
 
-        c2, created = Contract.objects.get_or_create(number="Д-2026-018", defaults=dict(
-            customer=cust2, title="Спецодежда: 120 рабочих костюмов", status="negotiation",
-            amount=120 * 14500, deadline=today + timedelta(days=60), manager=manager,
-            specification="Костюм рабочий саржа, СИЗ 2 класс, светоотражающие полосы."))
-
-        c3, created = Contract.objects.get_or_create(number="Д-2025-097", defaults=dict(
-            customer=cust3, title="Фартуки для персонала, 80 шт", status="closed",
-            amount=80 * 3200, signed_date=today - timedelta(days=120),
-            deadline=today - timedelta(days=60), manager=manager))
-
-        po, created = ProductionOrder.objects.get_or_create(number="ПЗ-026", defaults=dict(
-            contract=c1, product=prods["PRD-001"], qty=300, status="in_progress",
-            materials_written_off=False))
-        if created:
-            po.create_stages()
-            po.write_off_materials()
-            stages = list(po.stages.all())
-            for st, (norm, actual, status_) in zip(stages, [
-                (24, 22, "done"), (120, 0, "in_progress"), (30, 0, "pending"),
-                (16, 0, "pending"), (8, 0, "pending")]):
-                st.norm_hours, st.actual_hours, st.status = norm, actual, status_
-                st.assignee = worker
-                st.save()
-
-        cats = {}
-        for name, kind in [("Материалы", "variable"), ("Зарплата", "variable"),
-                           ("Аренда", "fixed"), ("Коммунальные", "fixed"), ("Прочее", "variable")]:
-            cats[name], _ = ExpenseCategory.objects.get_or_create(name=name, defaults=dict(kind=kind))
-
-        if not CashEntry.objects.exists():
-            for months_ago, inc, mat, sal, rent in [
-                (5, 1200000, 420000, 380000, 250000),
-                (4, 1550000, 510000, 400000, 250000),
-                (3, 980000, 300000, 380000, 250000),
-                (2, 1730000, 560000, 420000, 250000),
-                (1, 2100000, 640000, 450000, 250000),
-                (0, 885000, 380000, 410000, 250000),
-            ]:
-                d = (today.replace(day=15) - timedelta(days=30 * months_ago))
-                CashEntry.objects.create(direction="in", amount=inc, date=d,
-                                         description="Поступления от заказчиков",
-                                         contract=c1 if months_ago == 0 else None)
-                CashEntry.objects.create(direction="out", amount=mat, date=d, category=cats["Материалы"],
-                                         description="Закуп тканей и фурнитуры")
-                CashEntry.objects.create(direction="out", amount=sal, date=d, category=cats["Зарплата"],
-                                         description="ФОТ цеха")
-                CashEntry.objects.create(direction="out", amount=rent, date=d, category=cats["Аренда"],
-                                         description="Аренда цеха")
-
-        # --- Постоянные расходы (вводятся один раз) + настройки себестоимости ---
-        for name, amount, cat in [
-            ("Аренда цеха", 250000, "Аренда"),
-            ("Оклады АУП", 320000, "Зарплата"),
-            ("Коммунальные услуги", 60000, "Коммунальные"),
-            ("Интернет и связь", 15000, "Прочее"),
+        # ── тендеры ──
+        for pl, pno, org, item, qty, price, plan, cost, dl, st in [
+            ("госзакуп", "17228455-1", "АО «Шығыс Жылу»", "Куртка для рабочих", 210, 17000, 16000, 11200, 2, "submitted"),
+            ("Самрук-Казына", "1233176", "Теміржолсу-Маңғыстау", "Костюм рабочий", 90, 50488, 48000, 31500, 9, "planned"),
+            ("госзакуп", "17292686-1", "АО «Аэропорт Шымкент»", "Костюм форменный", 93, 50000, 46000, 30200, -20, "lost"),
         ]:
-            FixedCost.objects.get_or_create(name=name, defaults=dict(
-                monthly_amount=amount, category=cats.get(cat)))
-        s = CostSettings.get_solo()
-        s.method = CostSettings.Method.PER_HOUR
-        s.planned_monthly_hours = 1200
-        s.planned_monthly_units = 800
-        s.save()
-        for p, hours in [("PRD-001", 0.8), ("PRD-002", 2.4), ("PRD-003", 0.4)]:
-            Product.objects.filter(sku=p).update(norm_hours=hours)
+            Tender.objects.create(platform=plats[pl], own_company=own, purchase_no=pno, customer_name=org,
+                                  item_name=item, qty=qty, price=price, plan_price=plan, cost_per_unit=cost,
+                                  deadline=today + timedelta(days=dl), status=st, manager=manager,
+                                  delivery_days="60 календарных дней")
 
-        # --- Тендеры (план закупок) — по рабочим таблицам заказчика ---
-        own, _ = OwnCompany.objects.get_or_create(name="Каз Демеу", defaults=dict(bin_iin=""))
-        plats = {n: Platform.objects.get_or_create(name=n)[0]
-                 for n in ["госзакуп", "Самрук-Казына", "Eurasiantech"]}
-        if not Tender.objects.exists():
-            for pl, pno, org, item, qty, price, plan, cost, dl, st, dec in [
-                ("госзакуп", "17228455-1", "АО «Шығыс Жылу»", "Куртка для рабочих",
-                 210, 17000, 16000, 11200, 10, "submitted", ""),
-                ("Самрук-Казына", "1233176", "Теміржолсу-Маңғыстау", "Костюм рабочий",
-                 90, 50488, 48000, 31500, 3, "planned", ""),
-                ("госзакуп", "17292686-1", "АО «Аэропорт Шымкент»", "Костюм форменный (мужской)",
-                 93, 50000, 46000, 30200, 21, "planned", ""),
-                ("Eurasiantech", "№ 000061174", "ТОО Межрегионэнерготранзит",
-                 "Костюм хлопчатобумажный", 80, 21206, 18000, 13400, -5, "won", "выиграли лот"),
-                ("Самрук-Казына", "1233565", "АО «Алатау Жарық»", "Рукавицы",
-                 2965, 1070, 0, 0, -12, "declined", "отбой — не наш профиль"),
-            ]:
-                Tender.objects.create(
-                    platform=plats[pl], own_company=own, purchase_no=pno,
-                    customer_name=org, item_name=item, qty=qty, price=price,
-                    plan_price=plan, cost_per_unit=cost,
-                    deadline=today + timedelta(days=dl), status=st, decision=dec,
-                    manager=manager, delivery_days="60 дней")
+        pav = Customer.objects.create(name="ТОО «Павлодарская энергосетевая компания»")
+        mvd = Customer.objects.create(name="Департамент полиции на транспорте")
+
+        def contract(customer, pno, title, qty, price, days, status, **extra):
+            c = Contract.objects.create(number=pno, purchase_no=pno, customer=customer, title=title,
+                                        qty=qty, price=price, amount=qty * price, own_company=own,
+                                        platform="госзакуп", status=status, manager=manager,
+                                        signed_date=today - timedelta(days=40),
+                                        deadline=today + timedelta(days=days), **extra)
+            return c
+
+        c1 = contract(pav, "16561301-1", "Куртка АУП утеплённая", 741, 18000, 25, "in_progress",
+                      delivery_place="г. Павлодар", contract_no="741/26")
+        c2 = contract(mvd, "15677814-1", "Костюм летний камуфляжной расцветки", 120, 24800, 50, "new",
+                      delivery_place="г. Астана")
+        Tender.objects.create(platform=plats["госзакуп"], own_company=own, purchase_no="16561301-1",
+                              customer_name=pav.name, item_name=c1.title, qty=741, price=19000,
+                              plan_price=18000, cost_per_unit=12500, status="won", contract=c1,
+                              deadline=today - timedelta(days=50))
+
+        for pos, (amount, comment) in enumerate([
+            (45000, "образец"), (8500200, "ткани ашок из низ"), (15000, "дост ткани"),
+            (832000, "фурн и тд"), (891500, "синтепон"), (538650, "крой"), (2000000, "вахид пошив"),
+            (136900, "мешки упаковк"), (12000, "дост"),
+        ], start=1):
+            ContractExpense.objects.create(contract=c1, amount=amount, comment=comment,
+                                           kind=classify(comment), position=pos,
+                                           date=today - timedelta(days=35 - pos * 3))
+        ContractPayment.objects.create(contract=c1, amount=6670000, comment="аванс 50%",
+                                       date=today - timedelta(days=30))
+        Comment.objects.create(contract=c1, author=manager, importance="important",
+                               text="Заказчик просит логотип по новому брендбуку — уточнить до кроя.")
+
+        # ── цех ──
+        nasr = Brigade.objects.create(leader="Наср", people=9)
+        akbar = Brigade.objects.create(leader="Акбар", people=2)
+        order = WorkOrder.objects.create(product="Куртка АУП", contract=c1, client=pav.name,
+                                         deadline=c1.deadline, sewing_rate=3000)
+        set_route(order, StageTemplate.objects.filter(is_active=True).values_list("id", flat=True))
+        rows, _ = parse_sizes("44/170 - 35\n46/176 - 45\n48/158 - 25\n54/176 - 10")
+        apply_sizes(order, rows)
+        stages = {s.template.name: s for s in order.stages.select_related("template")}
+        sizes = {s.size: s for s in order.sizes.all()}
+
+        def entry(stage, size, days_ago, qty, extra="", **mats):
+            e = StageEntry.objects.create(stage=stages[stage], size=sizes[size], qty=qty, extra=extra,
+                                          date=today - timedelta(days=days_ago))
+            for k, v in mats.items():
+                EntryMaterial.objects.create(entry=e, material=k, meters=Decimal(str(v)))
+
+        entry("Крой", "44/170", 20, 35, основа=85.4, подклад=133.5, флис=38.5)
+        entry("Крой", "46/176", 19, 45, основа=112.5, подклад=138, флис=45)
+        entry("Крой", "48/158", 17, 25, основа=61.25, подклад=73.75)
+        entry("Вышивка", "44/170", 16, 35, "карман")
+        entry("Вышивка", "46/176", 15, 45, "полный")
+        for size, brigade, qty, marks in [("44/170", nasr, 35, [(14, .3), (10, .7), (6, 1)]),
+                                          ("46/176", akbar, 45, [(12, .2), (6, .5)])]:
+            j = SewingJob.objects.create(stage=stages["Тигин"], size=sizes[size], brigade=brigade, qty=qty,
+                                         started=today - timedelta(days=15))
+            for d, r in marks:
+                SewingProgress.objects.create(job=j, date=today - timedelta(days=d), ready=Decimal(str(r)))
+        entry("Чистка", "44/170", 5, 35)
+        entry("Упаковка", "44/170", 4, 30)
+
+        # ── склад ──
+        sup = Supplier.objects.create(name="ТОО Textile KZ", phone="+7 701 111 22 33")
+        for name, unit, minst, qty, price in [("Ткань оксфорд (основа)", "м", 300, 1200, 1450),
+                                              ("Подклад таффета", "м", 300, 900, 520),
+                                              ("Молния 60 см", "шт", 200, 800, 180)]:
+            m = Material.objects.create(name=name, unit=unit, min_stock=minst, default_supplier=sup)
+            MaterialBatch.objects.create(material=m, supplier=sup, qty=qty, unit_price=price,
+                                         received_at=today - timedelta(days=25), batch_no="B-10")
+            StockMovement.objects.create(material=m, qty=-(qty * Decimal("0.6")), reason="production",
+                                         work_order=order, note="Выдано на крой")
+
+        # ── финансы ──
+        for pos, (name, plan, lines) in enumerate([
+            ("Оклад Алмата", 1500000, [(250000, "хайр {m}"), (125000, "мумин {m}"), (50000, "техн {m}")]),
+            ("Аренда Алмата цех", 950000, [(919385, "аренда {m}"), (55764, "ком усл {m}")]),
+        ]):
+            cat = AdminCategory.objects.create(name=name, monthly_plan=plan, position=pos)
+            for back in range(3):
+                month = (today.replace(day=1) - timedelta(days=28 * back)).replace(day=1)
+                for amount, text in lines:
+                    AdminExpense.objects.create(category=cat, amount=amount, month=month,
+                                                comment=text.format(m=month.strftime("%m.%Y")))
+        OtherIncome.objects.create(amount=3000000, comment="вложение инвестора",
+                                   date=today - timedelta(days=45))
 
         self.stdout.write(self.style.SUCCESS(
-            "Демо-данные загружены. Логины: admin/admin12345, aigerim, saule (технолог), "
-            "marat (бухгалтер), bolat — пароль demo12345"))
+            "Демо-данные загружены. Логины: admin/admin12345, aigerim (менеджер), saule (технолог), "
+            "marat (бухгалтер), bolat (цех), dana (склад) — пароль demo12345"))

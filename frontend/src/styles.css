@@ -334,3 +334,59 @@ td.over, .over { color: var(--red); font-weight: 700; }
 .matrix td.sel { background: #eef1f8; font-weight: 700; }
 .kindbar { height: 6px; border-radius: 4px; background: var(--indigo); opacity: .7; margin-top: 3px; }
 .tablewrap { overflow-x: auto; }
+
+/* ── Цех: вкладки-листы, карточки этапов, полоски по этапам ─────────── */
+.tabs a, .linktabs a { padding: 8px 14px; font-weight: 700; color: var(--ink-soft); text-decoration: none;
+  border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; flex-shrink: 0; }
+.linktabs a.active { color: var(--indigo); border-bottom-color: var(--thread); }
+.linktabs { flex-wrap: wrap; }
+.tabcount { display: inline-block; margin-left: 6px; background: var(--thread); color: #fff; border-radius: 10px;
+  font-size: 10.5px; padding: 0 6px; font-weight: 800; vertical-align: 1px; }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); }
+.toolbar input, .toolbar select { width: auto; }
+label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 3px 0; cursor: pointer; }
+label.check input { width: auto; margin: 0; }
+.stagecards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stagecard { display: block; background: var(--card); border: 1px dashed var(--line); border-radius: var(--radius);
+  padding: 12px 14px; text-decoration: none; color: inherit; }
+.stagecard:hover { border-color: var(--indigo); }
+.stagecard .n { font-weight: 800; margin-bottom: 4px; }
+.stagecard .nums { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 4px; }
+.stagecard .nums b { font-family: 'JetBrains Mono', monospace; }
+.stagecard .wait b { color: var(--thread); }
+.stagebars { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 14px; }
+.ordercard .stagebars { grid-column: 1 / -1; }
+.stagebars .sb-top { display: flex; justify-content: space-between; gap: 6px; font-size: 11.5px; color: var(--ink-soft); }
+.stagebars .sb-top b { color: var(--ink); font-family: 'JetBrains Mono', monospace; }
+.stagebars .bar { min-width: 0; }
+
+/* Лист этапа — сетка как в Excel: колонки разделены, дни — строками-заголовками */
+table.sheet th, table.sheet td { border-right: 1px solid var(--line); padding: 6px 9px; }
+table.sheet th:last-child, table.sheet td:last-child { border-right: none; }
+table.sheet tr.group td { background: #f3f1ea; border-top: 2px solid var(--line); font-size: 13px; }
+table.sheet tr.total td { font-weight: 800; background: #fafaf7; border-top: 2px solid var(--line); }
+table.sheet tr.cont td { border-top: none; }
+table.sheet td.done { color: var(--green); font-weight: 700; }
+table.sheet td.cellpct { font-size: 12px; white-space: nowrap; }
+table.sheet td.cellpct.done { background: #eef7f1; }
+table.sheet th.date { white-space: nowrap; }
+table.sheet th a { color: inherit; }
+table.sheet td.pos { color: var(--green); font-weight: 700; }
+
+.grid2.wide-left { grid-template-columns: 1.6fr 1fr; }
+.kv.edit { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.kv.edit textarea { min-height: 38px; }
+
+/* Аналитика: горизонтальные полоски воронки */
+.frow { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--line); }
+.frow:last-child { border-bottom: none; }
+.frow .fl { flex: 1; min-width: 0; }
+.frow .fbar { flex: 1.2; height: 9px; background: var(--line); border-radius: 5px; overflow: hidden; }
+.frow .fbar i { display: block; height: 100%; background: var(--indigo); opacity: .75; border-radius: 5px; }
+h3.sub { font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin: 14px 0 6px; }
+
+@media (max-width: 900px) {
+  .grid2.wide-left { grid-template-columns: 1fr; }
+  .linktabs { flex-wrap: nowrap; }
+}

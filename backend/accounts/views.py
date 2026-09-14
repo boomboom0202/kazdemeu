@@ -88,38 +88,39 @@ class NotificationViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin,
 
     @action(detail=False, methods=["post"])
     def refresh(self, request):
-        """Сгенерировать уведомления: дедлайны договоров и просрочки платежей."""
+        """Сгенерировать уведомления: сроки договоров, заказов цеха и подачи заявок."""
         from django.utils import timezone
         from datetime import timedelta
-        from contracts.models import Contract, PaymentScheduleItem
+        from contracts.models import Contract
+        from tenders.models import Tender
+        from workshop.models import WorkOrder
         today = timezone.localdate()
         soon = today + timedelta(days=7)
 
-        # Раньше здесь был get_or_create на каждый договор и платёж — то есть
-        # запрос на строку, и всё это на каждой загрузке страницы. Теперь
-        # собираем нужные уведомления в память, затем один SELECT уже
+        # Нужные уведомления собираются в память, затем один SELECT уже
         # существующих и один bulk_create недостающих.
         wanted = []
         for c in Contract.objects.filter(status="in_progress", deadline__isnull=False):
+            label = c.purchase_no or c.number
             if c.deadline < today:
                 wanted.append(Notification(
-                    title=f"Срок истёк: договор №{c.number}", level="critical",
-                    message=f"Срок {c.deadline} прошёл.", link=f"/contracts/{c.id}"))
+                    title=f"Срок истёк: договор №{label}", level="critical",
+                    message=f"{c.title}: срок {c.deadline:%d.%m.%Y} прошёл.", link=f"/contracts/{c.id}"))
             elif c.deadline <= soon:
                 wanted.append(Notification(
-                    title=f"Срок близко: договор №{c.number}", level="warning",
-                    message=f"Срок исполнения {c.deadline}.", link=f"/contracts/{c.id}"))
-
-        # is_paid — свойство модели, фильтровать по нему нельзя,
-        # поэтому то же условие выражено через сравнение полей.
-        overdue = (PaymentScheduleItem.objects
-                   .filter(due_date__lt=today, paid_amount__lt=F("amount"))
-                   .select_related("contract"))
-        for p in overdue:
+                    title=f"Срок близко: договор №{label}", level="warning",
+                    message=f"{c.title}: срок исполнения {c.deadline:%d.%m.%Y}.", link=f"/contracts/{c.id}"))
+        for o in WorkOrder.objects.filter(status="in_work", deadline__isnull=False, deadline__lte=soon):
+            late = o.deadline < today
             wanted.append(Notification(
-                title=f"Просрочен платёж по №{p.contract.number}", level="warning",
-                message=f"Ожидалось {p.amount} до {p.due_date}, оплачено {p.paid_amount}.",
-                link=f"/contracts/{p.contract_id}"))
+                title=f"{'Цех опаздывает' if late else 'Срок цеха близко'}: {o.product} (заказ {o.id})",
+                level="critical" if late else "warning",
+                message=f"Срок {o.deadline:%d.%m.%Y}.", link=f"/workshop/orders/{o.id}"))
+        for t in Tender.objects.filter(status__in=["planned", "submitted"], deadline__gte=today,
+                                       deadline__lte=today + timedelta(days=3)):
+            wanted.append(Notification(
+                title=f"Подача заявки до {t.deadline:%d.%m}: {t.item_name[:80]}", level="warning",
+                message=f"{t.customer_name}, закупка {t.purchase_no or '—'}.", link="/tenders"))
 
         if wanted:
             titles = [n.title for n in wanted]
@@ -147,9 +148,8 @@ class UserAccessViewSet(viewsets.ModelViewSet):
 def access_keys(request):
     """Справочник ключей: разделы и их части, с человеческими названиями."""
     from .permissions import SECTIONS, AREAS
-    titles = {"tenders": "Тендеры", "contracts": "Договоры", "catalog": "Изделия и каталог",
-              "production": "Производство", "warehouse": "Склад", "finance": "Финансы",
-              "analytics": "Аналитика", "workshop": "Цех", "projects": "Проекты"}
+    titles = {"tenders": "Тендеры / План закупок", "contracts": "Договоры", "workshop": "Цех",
+              "warehouse": "Склад", "finance": "Финансы", "analytics": "Аналитика"}
     return Response([
         {"section": s, "title": titles.get(s, s),
          "areas": [{"key": f"{s}.{a}", "title": t} for a, t in AREAS.get(s, {}).items()]}

@@ -17,10 +17,9 @@ class OwnCompanySerializer(serializers.ModelSerializer):
 class TenderSerializer(serializers.ModelSerializer):
     platform_name = serializers.CharField(source="platform.name", read_only=True, default=None)
     own_company_name = serializers.CharField(source="own_company.name", read_only=True, default=None)
-    product_name = serializers.CharField(source="product.name", read_only=True, default=None)
     manager_name = serializers.CharField(source="manager.username", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    contract_number = serializers.CharField(source="contract.number", read_only=True, default=None)
+    contract_number = serializers.SerializerMethodField()
 
     customer_total = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
     plan_total = serializers.DecimalField(max_digits=16, decimal_places=2, read_only=True)
@@ -34,6 +33,11 @@ class TenderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tender
         fields = "__all__"
+        read_only_fields = ["contract"]
+
+    def get_contract_number(self, obj):
+        c = obj.contract
+        return (c.purchase_no or c.number) if c else None
 
     def get_allowed_transitions(self, obj):
         return sorted(map(str, Tender.TRANSITIONS.get(obj.status, set())))

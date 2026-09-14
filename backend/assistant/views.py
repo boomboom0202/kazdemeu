@@ -7,12 +7,12 @@ from .context import build_db_context
 
 SYSTEM_PROMPT = """Ты — AI-ассистент ERP-системы швейного цеха (тігін цехы).
 Отвечай на казахском или русском — на языке вопроса пользователя.
-Тебе дан срез базы данных (договоры, продукция с BOM и себестоимостью, склад, финансы).
+Тебе дан срез базы: тендеры, договоры с оплатами и расходами, заказы цеха по этапам, склад, финансы.
 Правила:
 - Отвечай только на основе данных из среза; если данных нет — честно скажи об этом.
 - Приводи конкретные цифры и номера договоров/артикулы.
-- Для запросов о цене/тендере: найди похожие изделия и договоры, рассчитай себестоимость по BOM,
-  предложи цену с обоснованием маржи и укажи структуру (материалы/труд/накладные).
+- Для запросов о цене/тендере: найди похожие договоры, посмотри, сколько по ним ушло на ткань,
+  фурнитуру, пошив и доставку (строки расходов), и предложи цену с обоснованием маржи.
 - Формат — краткий, деловой; таблицы в markdown при необходимости."""
 
 
@@ -49,7 +49,7 @@ def chat(request):
     messages = request.data.get("messages") or []
     if not messages:
         return Response({"detail": "messages пуст"}, status=400)
-    system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context() + "\n</database_snapshot>"
+    system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context(request.user) + "\n</database_snapshot>"
     text, err = _call_claude(messages, system)
     if err:
         return Response({"detail": err}, status=502)
@@ -64,7 +64,7 @@ def tender_proposal(request):
     desc = request.data.get("description", "").strip()
     if not desc:
         return Response({"detail": "description пуст"}, status=400)
-    system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context() + "\n</database_snapshot>"
+    system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context(request.user) + "\n</database_snapshot>"
     prompt = (f"Подготовь проект ценового предложения для тендера.\nОписание лота: {desc}\n\n"
               "1) Найди 2–3 похожих изделия/договора из базы и укажи их цены.\n"
               "2) Рассчитай себестоимость по BOM (материалы + труд + накладные).\n"

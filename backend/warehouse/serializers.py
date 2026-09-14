@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Supplier, Material, MaterialBatch, StockMovement, FinishedGoodsMovement, PurchaseOrder
+from .models import Supplier, Material, MaterialBatch, StockMovement, GoodsMovement
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -24,6 +24,7 @@ class MaterialSerializer(serializers.ModelSerializer):
 
 class MaterialBatchSerializer(serializers.ModelSerializer):
     material_name = serializers.CharField(source="material.name", read_only=True)
+    material_unit = serializers.CharField(source="material.unit", read_only=True)
     supplier_name = serializers.CharField(source="supplier.name", read_only=True, default=None)
 
     class Meta:
@@ -36,47 +37,57 @@ class StockMovementSerializer(serializers.ModelSerializer):
     material_unit = serializers.CharField(source="material.unit", read_only=True)
     reason_display = serializers.CharField(source="get_reason_display", read_only=True)
     created_by_name = serializers.CharField(source="created_by.username", read_only=True, default=None)
+    work_order_label = serializers.CharField(source="work_order.product", read_only=True, default=None)
 
     class Meta:
         model = StockMovement
         fields = "__all__"
-        read_only_fields = ["created_by"]
-
-
-class FinishedGoodsMovementSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source="product.name", read_only=True)
-
-    class Meta:
-        model = FinishedGoodsMovement
-        fields = "__all__"
+        read_only_fields = ["created_by", "batch"]
 
     def validate(self, attrs):
-        """Отгрузить больше, чем лежит на складе, нельзя.
-
-        Знак здесь осмыслен: плюс — приход (сдача из цеха или внесение
-        начального остатка), минус — отгрузка. Без этой проверки остаток
-        готовой продукции уходил в минус так же тихо, как склад материалов
-        до появления проверки при запуске заказа.
-        """
-        qty = attrs.get("qty", getattr(self.instance, "qty", 0))
-        product = attrs.get("product", getattr(self.instance, "product", None))
-        if qty == 0:
+        """Выдать больше, чем лежит, нельзя; приход вносится партией, а не движением."""
+        qty = attrs.get("qty")
+        if qty is None or qty == 0:
             raise serializers.ValidationError({"qty": "Количество не может быть нулевым."})
-        if qty < 0 and product is not None:
-            stock = product.fg_stock
-            if self.instance is not None:
-                stock -= self.instance.qty
-            if stock + qty < 0:
-                raise serializers.ValidationError(
-                    {"qty": f"На складе только {stock} шт «{product.name}», "
-                            f"отгрузить {abs(qty)} нельзя."})
+        if attrs.get("reason") == StockMovement.Reason.PURCHASE:
+            raise serializers.ValidationError(
+                {"reason": "Приход вносится партией — во вкладке «Приход»."})
+        material = attrs["material"]
+        if qty < 0 and material.stock + qty < 0:
+            raise serializers.ValidationError(
+                {"qty": f"На складе {material.stock} {material.unit} «{material.name}», "
+                        f"выдать {abs(qty)} нельзя."})
         return attrs
 
 
-class PurchaseOrderSerializer(serializers.ModelSerializer):
-    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
-    material_name = serializers.CharField(source="material.name", read_only=True)
+class GoodsMovementSerializer(serializers.ModelSerializer):
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+    contract_number = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.username", read_only=True, default=None)
 
     class Meta:
-        model = PurchaseOrder
+        model = GoodsMovement
         fields = "__all__"
+        read_only_fields = ["created_by"]
+
+    def get_contract_number(self, obj):
+        c = obj.contract
+        return (c.purchase_no or c.number) if c else None
+
+    def validate(self, attrs):
+        from .goods import line_stock
+        order = attrs.get("work_order")
+        if order is not None:
+            # строка заказа: изделие и договор берутся из заказа цеха
+            attrs["product"] = order.product
+            if attrs.get("contract") is None:
+                attrs["contract"] = order.contract
+        if not (attrs.get("product") or "").strip():
+            raise serializers.ValidationError({"product": "Укажите изделие."})
+        if attrs["kind"] == GoodsMovement.Kind.OUT:
+            have = line_stock(attrs.get("work_order"), attrs["product"], attrs.get("size", ""))
+            if attrs["qty"] > have:
+                raise serializers.ValidationError(
+                    {"qty": f"На складе {have} шт «{attrs['product']}» "
+                            f"{attrs.get('size') or ''}, отгрузить {attrs['qty']} нельзя.".replace("  ", " ")})
+        return attrs

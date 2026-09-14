@@ -7,67 +7,49 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from accounts import views as acc
+from tenders import views as tnd
 from contracts import views as con
+from workshop import views as ws
 from warehouse import views as wh
-from production import views as prod
 from finance import views as fin
 from finance import analytics_views as an
-from tenders import views as tnd
 from assistant import views as ai
-from workshop import views as ws
-from projects import views as pj
 
 router = DefaultRouter()
-# accounts
+# администрирование
 router.register("users", acc.UserViewSet)
 router.register("audit-log", acc.AuditLogViewSet)
 router.register("user-access", acc.UserAccessViewSet)
 router.register("notifications", acc.NotificationViewSet, basename="notifications")
-# contracts
+# тендеры
+router.register("tenders", tnd.TenderViewSet)
+router.register("platforms", tnd.PlatformViewSet)
+router.register("own-companies", tnd.OwnCompanyViewSet)
+# договоры и их деньги
 router.register("customers", con.CustomerViewSet)
 router.register("contracts", con.ContractViewSet)
-router.register("payment-schedule", con.PaymentScheduleViewSet)
+router.register("contract-payments", con.ContractPaymentViewSet)
+router.register("contract-expenses", con.ContractExpenseViewSet)
 router.register("contract-files", con.ContractFileViewSet)
 router.register("comments", con.CommentViewSet)
-# warehouse
+# цех
+router.register("stage-templates", ws.StageTemplateViewSet)
+router.register("brigades", ws.BrigadeViewSet)
+router.register("work-orders", ws.WorkOrderViewSet)
+router.register("work-sizes", ws.WorkSizeViewSet)
+router.register("stage-entries", ws.StageEntryViewSet)
+router.register("sewing-jobs", ws.SewingJobViewSet)
+router.register("sewing-progress", ws.SewingProgressViewSet)
+# склад
 router.register("suppliers", wh.SupplierViewSet)
 router.register("materials", wh.MaterialViewSet)
 router.register("material-batches", wh.MaterialBatchViewSet)
 router.register("stock-movements", wh.StockMovementViewSet)
-router.register("finished-goods", wh.FinishedGoodsViewSet)
-router.register("purchase-orders", wh.PurchaseOrderViewSet)
-# production
-router.register("products", prod.ProductViewSet)
-router.register("stage-templates", prod.StageTemplateViewSet)
-router.register("bom-items", prod.BOMItemViewSet)
-router.register("product-route", prod.ProductRouteStageViewSet)
-router.register("price-lists", prod.PriceListViewSet)
-router.register("price-list-items", prod.PriceListItemViewSet)
-router.register("production-orders", prod.ProductionOrderViewSet)
-router.register("production-stages", prod.ProductionStageViewSet)
-# finance
-router.register("expense-categories", fin.ExpenseCategoryViewSet)
-router.register("cash-entries", fin.CashEntryViewSet)
-router.register("fixed-costs", fin.FixedCostViewSet)
-# tenders
-router.register("tenders", tnd.TenderViewSet)
-router.register("platforms", tnd.PlatformViewSet)
-router.register("own-companies", tnd.OwnCompanyViewSet)
-# цех
-router.register("brigades", ws.BrigadeViewSet)
-router.register("work-orders", ws.WorkOrderViewSet)
-router.register("work-sizes", ws.WorkSizeViewSet)
-router.register("cut-entries", ws.CutEntryViewSet)
-router.register("embroidery-entries", ws.EmbroideryEntryViewSet)
-router.register("sewing-jobs", ws.SewingJobViewSet)
-router.register("sewing-progress", ws.SewingProgressViewSet)
-router.register("pack-entries", ws.PackEntryViewSet)
-# проекты и расходы
-router.register("projects", pj.ProjectViewSet)
-router.register("project-expenses", pj.ProjectExpenseViewSet)
-router.register("project-incomes", pj.ProjectIncomeViewSet)
-router.register("admin-categories", pj.AdminCategoryViewSet)
-router.register("admin-expenses", pj.AdminExpenseViewSet)
+router.register("goods-movements", wh.GoodsMovementViewSet)
+# финансы
+router.register("admin-categories", fin.AdminCategoryViewSet)
+router.register("admin-expenses", fin.AdminExpenseViewSet)
+router.register("other-income", fin.OtherIncomeViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -75,15 +57,8 @@ urlpatterns = [
     path("api/auth/refresh/", TokenRefreshView.as_view()),
     path("api/me/", acc.me),
     path("api/access-keys/", acc.access_keys),
-    path("api/cost-settings/", fin.cost_settings),
-    path("api/reports/cashflow/", fin.cashflow_report),
-    path("api/reports/pnl/", fin.pnl_report),
-    path("api/reports/forecast/", fin.forecast_report),
-    path("api/reports/fixed-costs-fact/", fin.fixed_costs_plan_fact),
-    path("api/analytics/products/", an.product_analytics),
-    path("api/analytics/contracts/", an.contracts_status_analytics),
-    path("api/analytics/dashboard/", an.dashboard),
-    path("api/analytics/stock-value/", an.stock_value),
+    path("api/finance/summary/", fin.summary),
+    path("api/analytics/overview/", an.overview),
     path("api/ai/chat/", ai.chat),
     path("api/ai/tender/", ai.tender_proposal),
     path("api/", include(router.urls)),

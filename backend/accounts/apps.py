@@ -9,15 +9,14 @@ class AccountsConfig(AppConfig):
         from . import audit
         from django.apps import apps
         for label in [
-            "contracts.Contract", "contracts.Comment", "contracts.PaymentScheduleItem",
-            "contracts.ContractFile", "warehouse.Material", "warehouse.MaterialBatch",
-            "warehouse.StockMovement", "production.Product", "production.ProductionOrder",
-            "production.ProductionStage", "finance.CashEntry", "warehouse.PurchaseOrder",
-            "finance.FixedCost", "production.StageTemplate", "tenders.Tender",
-            "workshop.WorkOrder", "workshop.WorkSize", "workshop.CutEntry",
-            "workshop.EmbroideryEntry", "workshop.SewingJob", "workshop.SewingProgress",
-            "workshop.PackEntry", "workshop.Brigade",
-            "projects.Project", "projects.ProjectExpense", "projects.ProjectIncome",
-            "projects.AdminCategory", "projects.AdminExpense",
+            "tenders.Tender",
+            "contracts.Contract", "contracts.Customer", "contracts.ContractPayment",
+            "contracts.ContractExpense", "contracts.ContractFile", "contracts.Comment",
+            "workshop.WorkOrder", "workshop.WorkSize", "workshop.WorkOrderStage",
+            "workshop.StageTemplate", "workshop.StageEntry", "workshop.SewingJob",
+            "workshop.SewingProgress", "workshop.Brigade",
+            "warehouse.Material", "warehouse.MaterialBatch", "warehouse.StockMovement",
+            "warehouse.GoodsMovement", "warehouse.Supplier",
+            "finance.AdminCategory", "finance.AdminExpense", "finance.OtherIncome",
         ]:
             audit.register(apps.get_model(label))

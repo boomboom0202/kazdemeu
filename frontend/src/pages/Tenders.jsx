@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, fmt, canEdit, apiError, can} from '../api'
-import { Link } from 'react-router-dom'
+import { api, fmt, canEdit, apiError, can, download } from '../api'
+import { Link, useNavigate } from 'react-router-dom'
 
 export const TENDER_STATUS = {
   planned: { label: 'В плане', color: '#8892a6' },
@@ -13,7 +13,7 @@ export const TENDER_STATUS = {
 
 const EMPTY = {
   platform: '', own_company: '', purchase_no: '', lot_no: '', customer_name: '', item_name: '',
-  product: '', qty: '', price: '', plan_price: '', cost_per_unit: '', deadline: '',
+  qty: '', price: '', plan_price: '', cost_per_unit: '', deadline: '',
   delivery_days: '', note: '',
 }
 
@@ -22,7 +22,6 @@ export default function Tenders({ user }) {
   const [funnel, setFunnel] = useState(null)
   const [platforms, setPlatforms] = useState([])
   const [companies, setCompanies] = useState([])
-  const [products, setProducts] = useState([])
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -30,9 +29,11 @@ export default function Tenders({ user }) {
   const [form, setForm] = useState(EMPTY)
   const fileRef = useRef()
   const mayEdit = canEdit(user, 'tenders.tenders')
+  const mayContract = canEdit(user, 'contracts.contracts')
+  const navigate = useNavigate()
 
   const load = () => {
-    const p = new URLSearchParams({ page_size: '200' })
+    const p = new URLSearchParams({ page_size: '2000' })
     if (status) p.set('status', status)
     if (q) p.set('search', q)
     api.get('/tenders/?' + p).then(r => setRows(r.data.results || []))
@@ -42,13 +43,12 @@ export default function Tenders({ user }) {
   useEffect(() => {
     if (can(user, 'tenders.platforms')) api.get('/platforms/?page_size=100').then(r => setPlatforms(r.data.results || []))
     if (can(user, 'tenders.companies')) api.get('/own-companies/?page_size=100').then(r => setCompanies(r.data.results || []))
-    api.get('/products/?page_size=200').then(r => setProducts(r.data.results || [])).catch(() => {})
   }, [])
 
   const reset = () => { setShowForm(false); setEditId(null); setForm(EMPTY) }
   const save = async () => {
     const body = Object.fromEntries(Object.entries(form).map(([k, v]) =>
-      [k, ['platform', 'own_company', 'product', 'deadline'].includes(k) ? (v || null) : v]))
+      [k, ['platform', 'own_company', 'deadline'].includes(k) ? (v || null) : v]))
     try {
       if (editId) await api.patch(`/tenders/${editId}/`, body)
       else await api.post('/tenders/', body)
@@ -60,7 +60,7 @@ export default function Tenders({ user }) {
     setForm({
       platform: t.platform || '', own_company: t.own_company || '', purchase_no: t.purchase_no,
       lot_no: t.lot_no, customer_name: t.customer_name, item_name: t.item_name,
-      product: t.product || '', qty: t.qty, price: t.price, plan_price: t.plan_price,
+      qty: t.qty, price: t.price, plan_price: t.plan_price,
       cost_per_unit: t.cost_per_unit, deadline: t.deadline || '',
       delivery_days: t.delivery_days || '', note: t.note || '',
     })
@@ -74,21 +74,13 @@ export default function Tenders({ user }) {
     try { await api.post(`/tenders/${t.id}/set_status/`, { status: s }); load() }
     catch (e) { alert(apiError(e)) }
   }
-  const calcCost = async (t) => {
-    try { await api.post(`/tenders/${t.id}/calc_cost/`); load() }
-    catch (e) { alert(apiError(e)) }
-  }
   const makeContract = async (t) => {
-    const number = prompt('Номер договора:', `Т-${t.purchase_no || t.id}`)
-    if (!number) return
-    try { const { data } = await api.post(`/tenders/${t.id}/make_contract/`, { number }); load()
-      alert(`Договор ${data.contract_number} создан — откройте раздел «Договоры».`) }
+    if (!confirm(`Завести договор по лоту «${t.item_name}»? Номер закупки, заказчик, количество и цена перенесутся в реестр.`)) return
+    try { const { data } = await api.post(`/tenders/${t.id}/make_contract/`, {}); navigate(`/contracts/${data.contract_id}`) }
     catch (e) { alert(apiError(e)) }
   }
   const exportExcel = async () => {
-    const r = await api.get('/tenders/export_excel/', { responseType: 'blob' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(r.data); a.download = 'план_закупок.xlsx'; a.click()
+    await download('/tenders/export_excel/', 'план_закупок.xlsx')
   }
   const importExcel = async (e) => {
     const f = e.target.files[0]; if (!f) return
@@ -159,10 +151,6 @@ export default function Tenders({ user }) {
           <div className="formrow">
             <div style={{ flex: 2 }}><label className="f">Организация-заказчик</label><input value={form.customer_name} onChange={e => setForm({ ...form, customer_name: e.target.value })} /></div>
             <div style={{ flex: 2 }}><label className="f">Наименование товара</label><input value={form.item_name} onChange={e => setForm({ ...form, item_name: e.target.value })} /></div>
-            <div><label className="f">Изделие из каталога</label>
-              <select value={form.product} onChange={e => setForm({ ...form, product: e.target.value })}>
-                <option value="">—</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select></div>
           </div>
           <div className="formrow">
             <div><label className="f">Кол-во</label><input type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
@@ -177,7 +165,7 @@ export default function Tenders({ user }) {
             <button className="btn" onClick={save} disabled={!form.item_name || !form.customer_name}>Сохранить</button>
             <button className="btn ghost" onClick={reset}>Отмена</button>
           </div>
-          <p className="muted">Выберите изделие из каталога — потом кнопкой «Себест.» подтянется расчёт по BOM.</p>
+          <p className="muted">Себестоимость за единицу — оценка: ткань, фурнитура, пошив, доставка. Фактические расходы потом пишутся в договор.</p>
         </div>
       )}
 
@@ -216,15 +204,14 @@ export default function Tenders({ user }) {
                 <td><span className="badge" style={{ background: TENDER_STATUS[t.status]?.color }}>
                   {TENDER_STATUS[t.status]?.label}</span>
                   {t.contract_number && <div style={{ fontSize: 11 }}>
-                    <Link to="/contracts">дог. {t.contract_number}</Link></div>}</td>
+                    <Link to={`/contracts/${t.contract}`}>дог. {t.contract_number}</Link></div>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {mayEdit && <>
                     {t.allowed_transitions?.map(s => (
                       <button key={s} className="btn small ghost" style={{ marginRight: 4 }}
                         onClick={() => setStatusOf(t, s)}>→ {TENDER_STATUS[s]?.label}</button>
                     ))}
-                    {t.product && <button className="btn small ghost" onClick={() => calcCost(t)}>Себест.</button>}{' '}
-                    {t.status === 'won' && !t.contract_number &&
+                    {t.status === 'won' && !t.contract_number && mayContract &&
                       <button className="btn small orange" onClick={() => makeContract(t)}>В договор</button>}{' '}
                     <button className="btn small ghost" onClick={() => edit(t)}>Изм.</button>{' '}
                     <button className="btn small ghost" onClick={() => del(t)}>Удл.</button>

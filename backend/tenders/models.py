@@ -66,9 +66,6 @@ class Tender(models.Model):
                                     verbose_name="От какой фирмы подаём")
     customer_name = models.CharField("Организация-заказчик", max_length=255)
     item_name = models.CharField("Наименование товара", max_length=255)
-    product = models.ForeignKey("production.Product", null=True, blank=True, on_delete=models.SET_NULL,
-                                verbose_name="Изделие из каталога",
-                                help_text="Связь с каталогом — чтобы взять себестоимость по BOM")
 
     qty = models.PositiveIntegerField("Количество", default=0)
     price = models.DecimalField("Цена заказчика за ед., ₸", max_digits=14, decimal_places=2, default=0)
@@ -76,7 +73,7 @@ class Tender(models.Model):
                                      decimal_places=2, default=0)
     cost_per_unit = models.DecimalField("Себестоимость за ед., ₸", max_digits=14,
                                         decimal_places=2, default=0,
-                                        help_text="Можно подтянуть из каталога кнопкой")
+                                        help_text="Оценка: ткань, фурнитура, пошив, доставка")
 
     deadline = models.DateField("Дата окончания приёма заявок", null=True, blank=True)
     deadline_time = models.TimeField("Время окончания", null=True, blank=True)

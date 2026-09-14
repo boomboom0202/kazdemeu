@@ -1,10 +1,40 @@
+"""Договоры — реестр «Договора.xlsx», и деньги по каждому договору.
+
+Раньше деньги жили отдельно: график платежей в договоре, касса в финансах,
+расходы проектов в третьем месте. Теперь всё, что потрачено и получено
+по договору, записано прямо в нём — как колонка в «Расходах.xlsx»:
+строки расходов с комментарием и строки прихода от заказчика.
+"""
 from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 POSITIVE_MONEY = [MinValueValidator(Decimal("0.01"))]
 NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
+ZERO = Decimal("0")
+
+
+class Source(models.TextChoices):
+    """Откуда строка: внесена руками или загружена из таблицы. Повторная
+    загрузка таблицы заменяет только загруженные строки — ручные остаются."""
+    MANUAL = "manual", "Вручную"
+    EXCEL = "excel", "Из Excel"
+
+
+class ExpenseKind(models.TextChoices):
+    DELIVERY = "delivery", "Доставка"
+    TRAVEL = "travel", "Командировки"
+    SAMPLES = "samples", "Образцы и лекала"
+    FABRIC = "fabric", "Ткань и материалы"
+    ACCESSORIES = "accessories", "Фурнитура и шевроны"
+    SEWING = "sewing", "Пошив, крой, вышивка"
+    PACKAGING = "packaging", "Упаковка"
+    PURCHASE = "purchase", "Закуп товара"
+    PERCENT = "percent", "Проценты и сертификаты"
+    LEGAL = "legal", "Пени, суды, документы"
+    OTHER = "other", "Прочее"
 
 
 class Customer(models.Model):
@@ -32,29 +62,28 @@ class Contract(models.Model):
         CANCELLED = "cancelled", "Отменён"
 
     TRANSITIONS = {
-        Status.NEW: {Status.NEGOTIATION, Status.CANCELLED},
+        Status.NEW: {Status.NEGOTIATION, Status.IN_PROGRESS, Status.CANCELLED},
         Status.NEGOTIATION: {Status.IN_PROGRESS, Status.CANCELLED},
         Status.IN_PROGRESS: {Status.CLOSED, Status.CANCELLED},
-        Status.CLOSED: set(),
+        Status.CLOSED: {Status.IN_PROGRESS},
         Status.CANCELLED: set(),
     }
 
     # Номер не уникален: в реестре у одной закупки бывает несколько позиций
-    # (трусы, костюм, халат по 16561301-1), а раньше уникальность склеивала
-    # их при загрузке в одну строку и молча теряла остальные.
+    # (трусы, костюм, халат по 16561301-1).
     number = models.CharField("Номер", max_length=100)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="contracts")
-    title = models.CharField(max_length=255)
+    title = models.CharField("Предмет закупки", max_length=255)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+    amount = models.DecimalField("Сумма без НДС", max_digits=14, decimal_places=2, default=0,
                                  validators=NON_NEGATIVE)
-    signed_date = models.DateField(null=True, blank=True)
-    deadline = models.DateField(null=True, blank=True, help_text="Срок исполнения")
-    specification = models.TextField(blank=True, help_text="Техническая спецификация")
+    signed_date = models.DateField("Дата подписания", null=True, blank=True)
+    deadline = models.DateField("Срок исполнения", null=True, blank=True)
+    specification = models.TextField("Техническая спецификация", blank=True)
     manager = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="managed_contracts")
 
-    # ── Колонки реестра «Договора.xlsx»: одна строка — одна позиция закупки ──
+    # ── Колонки реестра «Договора.xlsx» ──
     purchase_no = models.CharField("Номер закупки", max_length=100, blank=True, db_index=True)
     own_company = models.ForeignKey("tenders.OwnCompany", null=True, blank=True,
                                     on_delete=models.SET_NULL, related_name="contracts",
@@ -74,9 +103,6 @@ class Contract(models.Model):
     planned_execution = models.CharField("Планируемый срок исполнения", max_length=100, blank=True)
     phone = models.CharField("Телефон", max_length=255, blank=True)
     note = models.TextField("Коментарий", blank=True)
-    project = models.ForeignKey("projects.Project", null=True, blank=True,
-                                on_delete=models.SET_NULL, related_name="contracts",
-                                verbose_name="Проект")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -88,13 +114,7 @@ class Contract(models.Model):
         return f"№{self.number} — {self.title}"
 
     def transition_error(self, new_status):
-        """Причина, по которой переход запрещён, или None, если он допустим.
-
-        Правило одно на всю систему: и для кнопок статуса, и для обычного
-        сохранения договора. Раньше цепочка проверялась только в set_status,
-        а PATCH договора менял статус куда угодно — договор можно было
-        закрыть, минуя согласование и работу.
-        """
+        """Причина, по которой переход запрещён, или None, если он допустим."""
         if new_status == self.status:
             return None
         labels = dict(self.Status.choices)
@@ -105,36 +125,70 @@ class Contract(models.Model):
         return (f"Из статуса «{labels.get(self.status, self.status)}» нельзя перейти "
                 f"в «{labels.get(new_status, new_status)}». Доступные переходы: {can_go}.")
 
+    # Деньги считаются по заранее подтянутым строкам (prefetch payments, expenses):
+    # в реестре десятки договоров, и запрос на каждый был бы слишком дорог.
     @property
     def paid_amount(self):
-        return sum(p.paid_amount for p in self.payment_schedule.all())
+        return sum((p.amount for p in self.payments.all()), ZERO)
+
+    @property
+    def expenses_total(self):
+        return sum((e.amount for e in self.expenses.all()), ZERO)
+
+    @property
+    def profit(self):
+        """Что останется, когда заказчик заплатит всё: сумма договора − расходы."""
+        return self.amount - self.expenses_total
+
+    @property
+    def balance(self):
+        """Остаток, как внизу колонки в «Расходах»: пришло − потрачено."""
+        return self.paid_amount - self.expenses_total
+
+    @property
+    def debt(self):
+        return max(self.amount - self.paid_amount, ZERO)
 
     @property
     def is_overdue(self):
-        from django.utils import timezone
         return bool(self.deadline and self.status == self.Status.IN_PROGRESS
                     and self.deadline < timezone.localdate())
 
 
-class PaymentScheduleItem(models.Model):
-    """График платежей: когда и сколько должно поступить, и сколько поступило."""
-    contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name="payment_schedule")
-    due_date = models.DateField()
-    amount = models.DecimalField(max_digits=14, decimal_places=2, validators=POSITIVE_MONEY)
-    paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0,
-                                      validators=NON_NEGATIVE)
-    paid_date = models.DateField(null=True, blank=True)
-    note = models.CharField(max_length=255, blank=True)
+class ContractPayment(models.Model):
+    """Оплата от заказчика — строка «приход» под колонкой договора."""
+    contract = models.ForeignKey(Contract, on_delete=models.PROTECT, related_name="payments")
+    date = models.DateField("Дата", null=True, blank=True, default=timezone.localdate)
+    amount = models.DecimalField("Сумма", max_digits=14, decimal_places=2, validators=POSITIVE_MONEY)
+    comment = models.CharField("Комментарий", max_length=255, blank=True)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.MANUAL)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["due_date"]
-
-    @property
-    def is_paid(self):
-        return self.paid_amount >= self.amount
+        ordering = [models.F("date").desc(nulls_last=True), "-id"]
 
     def __str__(self):
-        return f"{self.contract.number}: {self.amount} до {self.due_date}"
+        return f"{self.contract.number}: +{self.amount}"
+
+
+class ContractExpense(models.Model):
+    """Расход по договору — строка «сумма | комментарий», как в «Расходах.xlsx».
+    Вид траты определяется по комментарию и правится руками."""
+    contract = models.ForeignKey(Contract, on_delete=models.PROTECT, related_name="expenses")
+    date = models.DateField("Дата", null=True, blank=True, default=timezone.localdate)
+    amount = models.DecimalField("Сумма", max_digits=14, decimal_places=2, validators=POSITIVE_MONEY)
+    comment = models.CharField("Комментарий", max_length=255, blank=True)
+    kind = models.CharField("Вид", max_length=20, choices=ExpenseKind.choices,
+                            default=ExpenseKind.OTHER)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.MANUAL)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"{self.contract.number}: −{self.amount} {self.comment}"
 
 
 class ContractFile(models.Model):

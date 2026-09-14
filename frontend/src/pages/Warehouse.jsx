@@ -1,378 +1,385 @@
 import React, { useEffect, useState } from 'react'
-import { api, fmt, fmtD, apiError, can, canEdit } from '../api'
+import { Link } from 'react-router-dom'
+import { api, fmt, fmtD, apiError, can, canEdit, today, dmy } from '../api'
 
-const PO_ST = { draft: 'Черновик', sent: 'Отправлена', received: 'Получена', cancelled: 'Отменена' }
-
-// У каждой вкладки свой ключ доступа — право можно выдать или отозвать
-// на одну вкладку, не трогая остальной склад.
+// У каждой вкладки свой ключ доступа
 const TABS = [
   ['materials', 'warehouse.materials', 'Материалы'],
-  ['movements', 'warehouse.movements', 'Движения материалов'],
+  ['receipts', 'warehouse.receipts', 'Приход'],
+  ['issues', 'warehouse.issues', 'Выдача в цех'],
+  ['goods', 'warehouse.goods', 'Готовая продукция'],
   ['suppliers', 'warehouse.suppliers', 'Поставщики'],
-  ['batches', 'warehouse.batches', 'Партии / Приход'],
-  ['purchase', 'warehouse.purchase', 'Заявки на закуп'],
-  ['fg', 'warehouse.fg', 'Готовая продукция'],
 ]
 
+/**
+ * Склад: ткань и фурнитура — приход партиями, выдача в цех под заказ;
+ * готовая продукция — то, что прошло последний этап заказа цеха, и отгрузка.
+ */
 export default function Warehouse({ user }) {
-  const visibleTabs = TABS.filter(([, key]) => can(user, key))
-  // стартовая вкладка — первая доступная: человеку могли выдать одни партии
-  const [tab, setTab] = useState(visibleTabs[0]?.[0] || 'materials')
-  const tabKey = TABS.find(([t]) => t === tab)?.[1] || 'warehouse'
-  // режим чтения вычисляется от активной вкладки, а не от раздела целиком
-  const ro = !canEdit(user, tabKey)
+  const visible = TABS.filter(([, key]) => can(user, key))
+  const [tab, setTab] = useState(visible[0]?.[0] || 'materials')
+  const key = TABS.find(([t]) => t === tab)?.[1]
+  const ro = !canEdit(user, key)
   const [materials, setMaterials] = useState([])
-  const [batches, setBatches] = useState([])
   const [suppliers, setSuppliers] = useState([])
-  const [pos, setPos] = useState([])
-  const [fg, setFg] = useState([])
-  const [products, setProducts] = useState([])
-  const [contracts, setContracts] = useState([])
-  const [batchForm, setBatchForm] = useState({ material: '', supplier: '', qty: '', unit_price: '', batch_no: '', received_at: new Date().toISOString().slice(0, 10) })
-  const [shipForm, setShipForm] = useState({ direction: 'out', product: '', qty: '', contract: '', note: '' })
-  const [showMat, setShowMat] = useState(false)
-  const [editMatId, setEditMatId] = useState(null)
-  const [matForm, setMatForm] = useState({ name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' })
-  const [showSup, setShowSup] = useState(false)
-  const [editSupId, setEditSupId] = useState(null)
-  const [supForm, setSupForm] = useState({ name: '', phone: '', email: '', bin_iin: '' })
-  const [movements, setMovements] = useState([])
-  const [moveMat, setMoveMat] = useState('')
+  const [orders, setOrders] = useState([])
 
-  const loadMovements = () => {
-    const p = new URLSearchParams({ page_size: '200' })
-    if (moveMat) p.set('material', moveMat)
-    api.get('/stock-movements/?' + p).then(r => setMovements(r.data.results || []))
-  }
-  useEffect(() => { if (tab === 'movements') loadMovements() }, [tab, moveMat])
-
-  const openMovements = (mid) => { setMoveMat(String(mid)); setTab('movements') }
-
-  const load = () => {
-    // грузим только то, на что есть право — иначе закрытая вкладка
-    // сыпала бы отказами при каждом обновлении
-    if (can(user, 'warehouse.materials')) api.get('/materials/?page_size=200').then(r => setMaterials(r.data.results || []))
-    if (can(user, 'warehouse.batches')) api.get('/material-batches/?page_size=200').then(r => setBatches(r.data.results || []))
-    if (can(user, 'warehouse.purchase')) api.get('/purchase-orders/?page_size=100').then(r => setPos(r.data.results || []))
-    if (can(user, 'warehouse.fg')) api.get('/finished-goods/?page_size=100').then(r => setFg(r.data.results || []))
-  }
-  const loadSuppliers = () => {
-    if (can(user, 'warehouse.suppliers')) api.get('/suppliers/?page_size=200').then(r => setSuppliers(r.data.results || []))
-  }
+  const loadMaterials = () => can(user, 'warehouse.materials') &&
+    api.get('/materials/?page_size=2000').then(r => setMaterials(r.data.results || []))
+  const loadSuppliers = () => can(user, 'warehouse.suppliers') &&
+    api.get('/suppliers/?page_size=1000').then(r => setSuppliers(r.data.results || []))
   useEffect(() => {
-    load()
-    loadSuppliers()
-    // вспомогательные справочники для форм; молчим, если раздел не выдан
-    if (can(user, 'catalog.products')) api.get('/products/?page_size=200').then(r => setProducts(r.data.results || [])).catch(() => {})
-    if (can(user, 'contracts.contracts')) api.get('/contracts/?page_size=200').then(r => setContracts(r.data.results || [])).catch(() => {})
+    loadMaterials(); loadSuppliers()
+    if (can(user, 'workshop.orders')) api.get('/work-orders/?page_size=1000&status=in_work').then(r => setOrders(r.data.results || [])).catch(() => {})
   }, [])
-
-  const resetMat = () => { setShowMat(false); setEditMatId(null); setMatForm({ name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' }) }
-  const saveMaterial = async () => {
-    const body = { ...matForm, min_stock: matForm.min_stock || 0, default_supplier: matForm.default_supplier || null }
-    try {
-      if (editMatId) await api.patch(`/materials/${editMatId}/`, body)
-      else await api.post('/materials/', body)
-      resetMat(); load()
-    } catch (e) { alert(apiError(e)) }
-  }
-  const editMaterial = (m) => {
-    setEditMatId(m.id); setShowMat(true)
-    setMatForm({ name: m.name, sku: m.sku, unit: m.unit, min_stock: m.min_stock, default_supplier: m.default_supplier || '' })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-  const deleteMaterial = async (m) => {
-    if (!confirm(`Удалить материал «${m.name}»?`)) return
-    try { await api.delete(`/materials/${m.id}/`); load() }
-    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-
-  const resetSup = () => { setShowSup(false); setEditSupId(null); setSupForm({ name: '', phone: '', email: '', bin_iin: '' }) }
-  const saveSupplier = async () => {
-    try {
-      if (editSupId) await api.patch(`/suppliers/${editSupId}/`, supForm)
-      else await api.post('/suppliers/', supForm)
-      resetSup(); loadSuppliers()
-    } catch (e) { alert(apiError(e)) }
-  }
-  const editSupplier = (s) => {
-    setEditSupId(s.id); setShowSup(true)
-    setSupForm({ name: s.name, phone: s.phone || '', email: s.email || '', bin_iin: s.bin_iin || '' })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-  const deleteSupplier = async (s) => {
-    if (!confirm(`Удалить поставщика «${s.name}»?`)) return
-    try { await api.delete(`/suppliers/${s.id}/`); loadSuppliers() }
-    catch (e) { alert(apiError(e, 'Не удалось удалить')) }
-  }
-
-  const addBatch = async () => {
-    await api.post('/material-batches/', { ...batchForm, supplier: batchForm.supplier || null })
-    setBatchForm({ ...batchForm, qty: '', unit_price: '', batch_no: '' }); load()
-  }
-
-  // Плюс — приход (внесение остатка при переходе на систему), минус — отгрузка.
-  const ship = async () => {
-    const qty = Number(shipForm.qty)
-    if (!qty || qty <= 0) return
-    const income = shipForm.direction === 'in'
-    try {
-      await api.post('/finished-goods/', {
-        product: shipForm.product, qty: income ? qty : -qty,
-        contract: income ? null : (shipForm.contract || null),
-        note: shipForm.note || (income ? 'Внесение остатка' : 'Отгрузка клиенту'),
-      })
-      setShipForm({ direction: 'out', product: '', qty: '', contract: '', note: '' }); load()
-    } catch (e) { alert(apiError(e)) }
-  }
-
-  const reverseBatch = async (b) => {
-    if (!confirm(`Сторнировать приход партии «${b.batch_no || b.id}» (${b.material_name})? Остаток и средняя цена вернутся к состоянию до этого прихода.`)) return
-    try { await api.post(`/material-batches/${b.id}/reverse/`); load() }
-    catch (e) { alert(e.response?.data?.detail || 'Не удалось сторнировать') }
-  }
-
-  const receivePo = async (po) => {
-    const price = prompt('Цена за единицу (₸):', '0')
-    if (price == null) return
-    await api.post(`/purchase-orders/${po.id}/receive/`, { unit_price: price }); load()
-  }
-
-  const checkStock = async () => { await api.post('/materials/check_stock/'); load(); alert('Проверка завершена: уведомления и авто-заявки обновлены.') }
 
   return (
     <div className={ro ? 'readonly' : ''}>
-      <div className="pagehead">
-        <h1>Склад</h1>
-        {canEdit(user, 'warehouse.materials') && <button className="btn ghost small btn-read" onClick={checkStock}>Проверить остатки (авто-заявка)</button>}
-      </div>
-      {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Эта вкладка вам доступна без права изменения.</div>}
+      <div className="pagehead"><h1>Склад</h1></div>
+      {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Эта вкладка доступна вам без права изменения.</div>}
       <div className="tabs">
-        {visibleTabs.map(([t, , label]) => (
-          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label}</button>
-        ))}
+        {visible.map(([t, , label]) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label}</button>)}
+      </div>
+      {tab === 'materials' && <Materials materials={materials} suppliers={suppliers} reload={loadMaterials} />}
+      {tab === 'receipts' && <Receipts materials={materials} suppliers={suppliers} reload={loadMaterials} />}
+      {tab === 'issues' && <Issues materials={materials} orders={orders} reload={loadMaterials} />}
+      {tab === 'goods' && <Goods user={user} />}
+      {tab === 'suppliers' && <Suppliers suppliers={suppliers} reload={loadSuppliers} />}
+    </div>
+  )
+}
+
+function Materials({ materials, suppliers, reload }) {
+  const empty = { name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' }
+  const [form, setForm] = useState(empty)
+  const [editId, setEditId] = useState(null)
+  const [show, setShow] = useState(false)
+  const save = async () => {
+    const body = { ...form, min_stock: form.min_stock || 0, default_supplier: form.default_supplier || null }
+    try {
+      if (editId) await api.patch(`/materials/${editId}/`, body)
+      else await api.post('/materials/', body)
+      setForm(empty); setEditId(null); setShow(false); reload()
+    } catch (e) { alert(apiError(e)) }
+  }
+  const low = materials.filter(m => m.low_stock).length
+  return (
+    <>
+      <div className="pagehead" style={{ marginTop: 0 }}>
+        <span className="muted">{materials.length} материалов{low ? <> · <b className="neg">{low} заканчивается</b></> : ''}</span>
+        <button className="btn small" onClick={() => { setShow(s => !s); setEditId(null); setForm(empty) }}>{show ? 'Закрыть' : '+ Материал'}</button>
+      </div>
+      {show && (
+        <div className="card stitch">
+          <h2>{editId ? 'Изменить материал' : 'Новый материал'}</h2>
+          <div className="formrow">
+            <div style={{ flex: 2 }}><label className="f">Название</label><input value={form.name} placeholder="Ткань оксфорд (основа)" onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><label className="f">Артикул</label><input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} /></div>
+            <div><label className="f">Ед. изм.</label><input value={form.unit} placeholder="м, шт, кг" onChange={e => setForm({ ...form, unit: e.target.value })} /></div>
+            <div><label className="f">Мин. остаток</label><input type="number" value={form.min_stock} onChange={e => setForm({ ...form, min_stock: e.target.value })} /></div>
+            <div><label className="f">Поставщик</label>
+              <select value={form.default_supplier} onChange={e => setForm({ ...form, default_supplier: e.target.value })}>
+                <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select></div>
+            <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={save} disabled={!form.name}>Сохранить</button></div>
+          </div>
+          <p className="muted">Когда остаток опустится ниже минимума, придёт уведомление.</p>
+        </div>
+      )}
+      <div className="card" style={{ padding: 0 }}>
+        <table>
+          <thead><tr><th>Материал</th><th className="num">Остаток</th><th className="num">Мин.</th><th className="num">Ср. цена</th><th>Поставщик</th><th /><th /></tr></thead>
+          <tbody>
+            {materials.length === 0 && <tr><td colSpan={7} className="muted">Материалов нет.</td></tr>}
+            {materials.map(m => (
+              <tr key={m.id}>
+                <td><b>{m.name}</b>{m.sku && <div className="muted">{m.sku}</div>}</td>
+                <td className="num">{fmtD(m.stock)} {m.unit}</td>
+                <td className="num">{fmtD(m.min_stock)}</td>
+                <td className="num">{fmt(m.avg_price)}</td>
+                <td>{m.default_supplier_name || '—'}</td>
+                <td>{m.low_stock ? <span className="pill low">мало</span> : <span className="pill ok">хватает</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn small ghost" onClick={() => { setEditId(m.id); setShow(true); setForm({ name: m.name, sku: m.sku, unit: m.unit, min_stock: m.min_stock, default_supplier: m.default_supplier || '' }) }}>Изм.</button>{' '}
+                  <button className="btn small ghost" onClick={async () => { if (!confirm(`Удалить материал «${m.name}»? С ним удалится история движений.`)) return
+                    try { await api.delete(`/materials/${m.id}/`); reload() } catch (e) { alert(apiError(e)) } }}>Удл.</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function Receipts({ materials, suppliers, reload }) {
+  const [rows, setRows] = useState([])
+  const [form, setForm] = useState({ material: '', supplier: '', qty: '', unit_price: '', batch_no: '', received_at: today() })
+  const load = () => api.get('/material-batches/?page_size=1000').then(r => setRows(r.data.results || []))
+  useEffect(() => { load() }, [])
+  const add = async () => {
+    try {
+      await api.post('/material-batches/', { ...form, supplier: form.supplier || null, unit_price: form.unit_price || 0 })
+      setForm({ ...form, qty: '', unit_price: '', batch_no: '' }); load(); reload()
+    } catch (e) { alert(apiError(e)) }
+  }
+  return (
+    <>
+      <div className="card stitch">
+        <h2>Приход партии</h2>
+        <div className="formrow">
+          <div style={{ flex: 2 }}><label className="f">Материал</label>
+            <select value={form.material} onChange={e => setForm({ ...form, material: e.target.value })}>
+              <option value="">—</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select></div>
+          <div><label className="f">Поставщик</label>
+            <select value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })}>
+              <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select></div>
+          <div><label className="f">Кол-во</label><input type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
+          <div><label className="f">Цена за ед.</label><input type="number" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} /></div>
+          <div><label className="f">Партия №</label><input value={form.batch_no} onChange={e => setForm({ ...form, batch_no: e.target.value })} /></div>
+          <div><label className="f">Дата</label><input type="date" value={form.received_at} onChange={e => setForm({ ...form, received_at: e.target.value })} /></div>
+          <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={add} disabled={!form.material || !form.qty}>Принять</button></div>
+        </div>
+        <p className="muted">Деньги за ткань пишутся расходом в договор, под который её купили. Здесь — сколько пришло на склад.</p>
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        <table>
+          <thead><tr><th>Дата</th><th>Материал</th><th>Поставщик</th><th className="num">Кол-во</th><th className="num">Цена</th><th>Партия</th><th /></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">Приходов нет.</td></tr>}
+            {rows.map(b => (
+              <tr key={b.id}>
+                <td>{dmy(b.received_at)}</td><td>{b.material_name}</td><td>{b.supplier_name || '—'}</td>
+                <td className="num">{fmtD(b.qty)} {b.material_unit}</td><td className="num">{fmt(b.unit_price)}</td><td>{b.batch_no || '—'}</td>
+                <td><button className="btn small ghost" onClick={async () => {
+                  if (!confirm(`Сторнировать приход ${fmtD(b.qty)} «${b.material_name}»?`)) return
+                  try { await api.post(`/material-batches/${b.id}/reverse/`); load(); reload() } catch (e) { alert(apiError(e)) }
+                }}>Сторно</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function Issues({ materials, orders, reload }) {
+  const [rows, setRows] = useState([])
+  const [filter, setFilter] = useState('')
+  const [form, setForm] = useState({ material: '', reason: 'production', qty: '', work_order: '', note: '' })
+  const load = () => {
+    const p = new URLSearchParams({ page_size: 1000 })
+    if (filter) p.set('material', filter)
+    api.get('/stock-movements/?' + p).then(r => setRows(r.data.results || []))
+  }
+  useEffect(() => { load() }, [filter])
+  const mat = materials.find(m => String(m.id) === String(form.material))
+  const add = async () => {
+    const n = Number(form.qty)
+    const qty = form.reason === 'production' ? -Math.abs(n) : form.reason === 'return' ? Math.abs(n) : n
+    try {
+      await api.post('/stock-movements/', { material: form.material, reason: form.reason, qty,
+        work_order: form.work_order || null, note: form.note })
+      setForm({ ...form, qty: '', note: '' }); load(); reload()
+    } catch (e) { alert(apiError(e)) }
+  }
+  return (
+    <>
+      <div className="card stitch">
+        <h2>Выдать в цех или поправить остаток</h2>
+        <div className="formrow">
+          <div><label className="f">Операция</label>
+            <select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
+              <option value="production">Выдача в цех</option>
+              <option value="return">Возврат из цеха</option>
+              <option value="adjustment">Корректировка (+/−)</option>
+            </select></div>
+          <div style={{ flex: 2 }}><label className="f">Материал</label>
+            <select value={form.material} onChange={e => setForm({ ...form, material: e.target.value })}>
+              <option value="">—</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name} · {fmtD(m.stock)} {m.unit}</option>)}
+            </select></div>
+          <div><label className="f">{form.reason === 'adjustment' ? 'Кол-во (минус — списать)' : 'Кол-во'}</label>
+            <input type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
+          {form.reason !== 'adjustment' && <div style={{ flex: 2 }}><label className="f">Заказ цеха</label>
+            <select value={form.work_order} onChange={e => setForm({ ...form, work_order: e.target.value })}>
+              <option value="">—</option>{orders.map(o => <option key={o.id} value={o.id}>{o.product}{o.contract_number ? ` · ${o.contract_number}` : ''}</option>)}
+            </select></div>}
+          <div><label className="f">Примечание</label><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
+          <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={add} disabled={!form.material || !form.qty}>Провести</button></div>
+        </div>
+        {mat && <p className="muted">На складе {fmtD(mat.stock)} {mat.unit}.</p>}
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        <div className="toolbar">
+          <b>Движения материалов</b>
+          <select style={{ width: 'auto', marginLeft: 'auto' }} value={filter} onChange={e => setFilter(e.target.value)}>
+            <option value="">Все материалы</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>Когда</th><th>Материал</th><th className="num">Движение</th><th>Операция</th><th>Заказ цеха</th><th>Примечание</th><th>Кто</th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">Движений нет.</td></tr>}
+            {rows.map(mv => (
+              <tr key={mv.id}>
+                <td>{new Date(mv.created_at).toLocaleString('ru-RU')}</td>
+                <td>{mv.material_name}</td>
+                <td className={'num ' + (mv.qty > 0 ? 'pos' : 'neg')}>{mv.qty > 0 ? '+' : ''}{fmtD(mv.qty)} {mv.material_unit}</td>
+                <td>{mv.reason_display}</td>
+                <td>{mv.work_order ? <Link to={`/workshop/orders/${mv.work_order}`}>{mv.work_order_label}</Link> : '—'}</td>
+                <td>{mv.note || '—'}</td>
+                <td>{mv.created_by_name || 'система'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function Goods({ user }) {
+  const [lines, setLines] = useState([])
+  const [moves, setMoves] = useState([])
+  const [ship, setShip] = useState(null)
+  const [shipForm, setShipForm] = useState({ qty: '', date: today(), note: '' })
+  const [inForm, setInForm] = useState({ product: '', size: '', qty: '', note: 'Остаток при переходе на систему' })
+  const [onlyStock, setOnlyStock] = useState(true)
+  const load = () => {
+    api.get('/goods-movements/stock/').then(r => setLines(r.data))
+    api.get('/goods-movements/?page_size=500').then(r => setMoves(r.data.results || []))
+  }
+  useEffect(() => { load() }, [])
+  const run = async (fn) => { try { await fn(); load() } catch (e) { alert(apiError(e)) } }
+  const shown = lines.filter(l => !onlyStock || l.stock > 0)
+  const total = shown.reduce((a, l) => a + l.stock, 0)
+
+  return (
+    <>
+      <div className="card" style={{ padding: 0 }}>
+        <div className="toolbar">
+          <b>Готовая продукция</b><span className="muted">на складе {fmt(total)} шт</span>
+          <label className="check" style={{ marginLeft: 'auto' }}><input type="checkbox" checked={onlyStock} onChange={e => setOnlyStock(e.target.checked)} />только то, что лежит</label>
+        </div>
+        <div className="tablewrap"><table className="sheet">
+          <thead><tr><th>Изделие</th><th>Размер</th><th>Договор</th><th className="num">Из цеха</th><th className="num">Внесено</th><th className="num">Отгружено</th><th className="num">На складе</th><th /></tr></thead>
+          <tbody>
+            {shown.length === 0 && <tr><td colSpan={8} className="muted">Пусто. Изделия появляются здесь, когда проходят последний этап заказа в цехе.</td></tr>}
+            {shown.map((l, i) => (
+              <tr key={i}>
+                <td>{l.order ? <Link to={`/workshop/orders/${l.order}`}>{l.product}</Link> : l.product}</td>
+                <td>{l.size || '—'}</td>
+                <td>{l.contract ? (can(user, 'contracts.contracts') ? <Link to={`/contracts/${l.contract}`}>{l.contract_number}</Link> : l.contract_number) : '—'}
+                  {l.customer && <div className="muted">{l.customer}</div>}</td>
+                <td className="num">{l.made}</td><td className="num">{l.received || ''}</td><td className="num">{l.shipped || ''}</td>
+                <td className="num"><b>{l.stock}</b></td>
+                <td>{l.stock > 0 && <button className="btn small ghost" onClick={() => { setShip(l); setShipForm({ qty: l.stock, date: today(), note: '' }) }}>Отгрузить</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
       </div>
 
-      {tab === 'materials' && (
-        <>
-          <div className="pagehead" style={{ marginTop: 0 }}>
-            <span className="muted">Справочник материалов (сырьё). Остаток появляется после прихода партий.</span>
-            <button className="btn small" onClick={() => showMat ? resetMat() : setShowMat(true)}>{showMat ? 'Закрыть' : '+ Новый материал'}</button>
-          </div>
-          {showMat && (
-            <div className="card stitch">
-              <h2>{editMatId ? 'Редактирование материала' : 'Новый материал'}</h2>
-              <div className="formrow">
-                <div><label className="f">Название</label><input value={matForm.name} onChange={e => setMatForm({ ...matForm, name: e.target.value })} /></div>
-                <div><label className="f">SKU (артикул)</label><input value={matForm.sku} onChange={e => setMatForm({ ...matForm, sku: e.target.value })} /></div>
-                <div><label className="f">Ед. изм.</label><input value={matForm.unit} onChange={e => setMatForm({ ...matForm, unit: e.target.value })} placeholder="м, шт, кг" /></div>
-                <div><label className="f">Мин. остаток</label><input type="number" value={matForm.min_stock} onChange={e => setMatForm({ ...matForm, min_stock: e.target.value })} /></div>
-                <div><label className="f">Осн. поставщик</label>
-                  <select value={matForm.default_supplier} onChange={e => setMatForm({ ...matForm, default_supplier: e.target.value })}>
-                    <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select></div>
-                <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
-                  <button className="btn" onClick={saveMaterial} disabled={!matForm.name || !matForm.sku}>Сохранить</button>
-                  <button className="btn ghost" onClick={resetMat}>Отмена</button>
-                </div>
-              </div>
-              <p className="muted">Мин. остаток — порог для авто-заявки; поставщик нужен, чтобы заявка создалась автоматически.</p>
-            </div>
-          )}
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead><tr><th>Материал</th><th>SKU</th><th className="num">Остаток</th><th className="num">Мин.</th><th className="num">Ср. цена</th><th>Поставщик</th><th /><th /></tr></thead>
-              <tbody>
-                {materials.map(m => (
-                  <tr key={m.id}>
-                    <td style={{ fontWeight: 700 }}>{m.name}</td>
-                    <td>{m.sku}</td>
-                    <td className="num">{fmtD(m.stock)} {m.unit}</td>
-                    <td className="num">{fmtD(m.min_stock)}</td>
-                    <td className="num">{fmt(m.avg_price)}</td>
-                    <td>{m.default_supplier_name || '—'}</td>
-                    <td>{m.low_stock ? <span className="pill low">мало</span> : <span className="pill ok">достаточно</span>}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className={can(user, 'warehouse.movements') ? 'btn small ghost btn-read' : 'hide'} onClick={() => openMovements(m.id)}>История</button>{' '}
-                      <button className="btn small ghost" onClick={() => editMaterial(m)}>Изм.</button>{' '}
-                      <button className="btn small ghost" onClick={() => deleteMaterial(m)}>Удл.</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === 'movements' && (
-        <>
-          <div className="pagehead" style={{ marginTop: 0 }}>
-            <span className="muted">Каждое изменение остатка: приход партий (+) и списание в производство (−). Ничего не пропадает бесследно.</span>
-            <select style={{ width: 'auto' }} value={moveMat} onChange={e => setMoveMat(e.target.value)}>
-              <option value="">Все материалы</option>
-              {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead><tr><th>Дата</th><th>Материал</th><th className="num">Движение</th><th>Причина</th><th>Примечание</th><th>Кто</th></tr></thead>
-              <tbody>
-                {movements.map(mv => (
-                  <tr key={mv.id}>
-                    <td>{new Date(mv.created_at).toLocaleString('ru-RU')}</td>
-                    <td>{mv.material_name}</td>
-                    <td className="num" style={{ fontWeight: 700, color: mv.qty > 0 ? 'var(--green)' : 'var(--red)' }}>
-                      {mv.qty > 0 ? '+' : ''}{fmtD(mv.qty)} {mv.material_unit}
-                    </td>
-                    <td><span className={`pill ${mv.qty > 0 ? 'ok' : 'low'}`}>{mv.reason_display}</span></td>
-                    <td>{mv.note || '—'}</td>
-                    <td>{mv.created_by_name || 'система'}</td>
-                  </tr>
-                ))}
-                {movements.length === 0 && <tr><td colSpan={6} className="muted" style={{ padding: 16 }}>Движений нет.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === 'suppliers' && (
-        <>
-          <div className="pagehead" style={{ marginTop: 0 }}>
-            <span className="muted">Справочник поставщиков материалов.</span>
-            <button className="btn small" onClick={() => showSup ? resetSup() : setShowSup(true)}>{showSup ? 'Закрыть' : '+ Новый поставщик'}</button>
-          </div>
-          {showSup && (
-            <div className="card stitch">
-              <h2>{editSupId ? 'Редактирование поставщика' : 'Новый поставщик'}</h2>
-              <div className="formrow">
-                <div><label className="f">Название</label><input value={supForm.name} onChange={e => setSupForm({ ...supForm, name: e.target.value })} /></div>
-                <div><label className="f">Телефон</label><input value={supForm.phone} onChange={e => setSupForm({ ...supForm, phone: e.target.value })} /></div>
-                <div><label className="f">Email</label><input value={supForm.email} onChange={e => setSupForm({ ...supForm, email: e.target.value })} /></div>
-                <div><label className="f">БИН/ИИН</label><input value={supForm.bin_iin} onChange={e => setSupForm({ ...supForm, bin_iin: e.target.value })} /></div>
-                <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
-                  <button className="btn" onClick={saveSupplier} disabled={!supForm.name}>Сохранить</button>
-                  <button className="btn ghost" onClick={resetSup}>Отмена</button>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead><tr><th>Название</th><th>Телефон</th><th>Email</th><th>БИН/ИИН</th><th /></tr></thead>
-              <tbody>
-                {suppliers.map(s => (
-                  <tr key={s.id}><td style={{ fontWeight: 700 }}>{s.name}</td><td>{s.phone || '—'}</td><td>{s.email || '—'}</td><td>{s.bin_iin || '—'}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn small ghost" onClick={() => editSupplier(s)}>Изм.</button>{' '}
-                      <button className="btn small ghost" onClick={() => deleteSupplier(s)}>Удл.</button>
-                    </td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === 'batches' && (
-        <>
-          <div className="card stitch">
-            <h2>Приёмка партии (приход)</h2>
-            <div className="formrow">
-              <div><label className="f">Материал</label>
-                <select value={batchForm.material} onChange={e => setBatchForm({ ...batchForm, material: e.target.value })}>
-                  <option value="">—</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select></div>
-              <div><label className="f">Поставщик</label>
-                <select value={batchForm.supplier} onChange={e => setBatchForm({ ...batchForm, supplier: e.target.value })}>
-                  <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select></div>
-              <div><label className="f">Кол-во</label><input type="number" value={batchForm.qty} onChange={e => setBatchForm({ ...batchForm, qty: e.target.value })} /></div>
-              <div><label className="f">Цена за единицу</label><input type="number" value={batchForm.unit_price} onChange={e => setBatchForm({ ...batchForm, unit_price: e.target.value })} /></div>
-              <div><label className="f">Партия №</label><input value={batchForm.batch_no} onChange={e => setBatchForm({ ...batchForm, batch_no: e.target.value })} /></div>
-              <div><label className="f">Дата</label><input type="date" value={batchForm.received_at} onChange={e => setBatchForm({ ...batchForm, received_at: e.target.value })} /></div>
-              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={addBatch} disabled={!batchForm.material || !batchForm.qty}>Принять</button></div>
+      {ship && (
+        <div className="card stitch">
+          <h2>Отгрузка: {ship.product} {ship.size}</h2>
+          <div className="formrow">
+            <div><label className="f">Штук (на складе {ship.stock})</label><input type="number" min="1" value={shipForm.qty} onChange={e => setShipForm({ ...shipForm, qty: e.target.value })} /></div>
+            <div><label className="f">Дата</label><input type="date" value={shipForm.date} onChange={e => setShipForm({ ...shipForm, date: e.target.value })} /></div>
+            <div style={{ flex: 2 }}><label className="f">Примечание</label><input value={shipForm.note} placeholder="накладная №, куда" onChange={e => setShipForm({ ...shipForm, note: e.target.value })} /></div>
+            <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
+              <button className="btn" disabled={!shipForm.qty} onClick={() => run(async () => {
+                await api.post('/goods-movements/', { kind: 'out', work_order: ship.order, product: ship.product, size: ship.size,
+                  contract: ship.contract, qty: shipForm.qty, date: shipForm.date, note: shipForm.note })
+                setShip(null)
+              })}>Отгрузить</button>
+              <button className="btn ghost" onClick={() => setShip(null)}>Отмена</button>
             </div>
           </div>
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead><tr><th>Партия</th><th>Материал</th><th>Поставщик</th><th className="num">Кол-во</th><th className="num">Цена</th><th>Дата</th><th /></tr></thead>
-              <tbody>
-                {batches.map(b => (
-                  <tr key={b.id}><td>{b.batch_no || b.id}</td><td>{b.material_name}</td><td>{b.supplier_name || '—'}</td>
-                    <td className="num">{fmtD(b.qty)}</td><td className="num">{fmt(b.unit_price)}</td><td>{b.received_at}</td>
-                    <td><button className="btn small ghost" onClick={() => reverseBatch(b)}>Сторно</button></td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === 'purchase' && (
-        <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th>№</th><th>Поставщик</th><th>Материал</th><th className="num">Кол-во</th><th>Статус</th><th>Тип</th><th /></tr></thead>
-            <tbody>
-              {pos.map(p => (
-                <tr key={p.id}>
-                  <td>{p.id}</td><td>{p.supplier_name}</td><td>{p.material_name}</td>
-                  <td className="num">{fmtD(p.qty)}</td>
-                  <td><span className="pill imp">{PO_ST[p.status]}</span></td>
-                  <td>{p.auto_created ? <span className="pill low">авто</span> : 'вручную'}</td>
-                  <td>{['draft', 'sent'].includes(p.status) && <button className="btn small" onClick={() => receivePo(p)}>Принять</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
 
-      {tab === 'fg' && (
-        <>
-          <div className="card stitch">
-            <h2>{shipForm.direction === 'in' ? 'Приход готовой продукции' : 'Отгрузка клиенту'}</h2>
-            <div className="formrow">
-              <div><label className="f">Операция</label>
-                <select value={shipForm.direction} onChange={e => setShipForm({ ...shipForm, direction: e.target.value })}>
-                  <option value="out">Отгрузка клиенту</option>
-                  <option value="in">Приход (внести остаток)</option>
-                </select></div>
-              <div><label className="f">Изделие</label>
-                <select value={shipForm.product} onChange={e => setShipForm({ ...shipForm, product: e.target.value })}>
-                  <option value="">—</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} (на складе: {p.fg_stock})</option>)}
-                </select></div>
-              <div><label className="f">Кол-во</label><input type="number" min="1" value={shipForm.qty} onChange={e => setShipForm({ ...shipForm, qty: e.target.value })} /></div>
-              {shipForm.direction === 'out' && (
-                <div><label className="f">Договор</label>
-                  <select value={shipForm.contract} onChange={e => setShipForm({ ...shipForm, contract: e.target.value })}>
-                    <option value="">—</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.number}</option>)}
-                  </select></div>
-              )}
-              <div><label className="f">Примечание</label><input value={shipForm.note} onChange={e => setShipForm({ ...shipForm, note: e.target.value })} /></div>
-              <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={ship} disabled={!shipForm.product || !shipForm.qty}>
-                {shipForm.direction === 'in' ? 'Оприходовать' : 'Отгрузить'}</button></div>
-            </div>
-            <p className="muted">Обычно готовая продукция попадает на склад сама — при завершении
-              производственного заказа. Приход вручную нужен при переходе на систему, чтобы внести
-              то, что уже лежит на складе. Отгрузка уменьшает остаток и попадает в рейтинг продаж
-              в «Аналитике».</p>
+      <div className="grid2">
+        <div className="card stitch">
+          <h2>Внести остаток</h2>
+          <p className="muted" style={{ marginBottom: 8 }}>Для того, что уже лежало на складе до перехода на систему. Выпуск цеха вносить не нужно — он появляется сам.</p>
+          <div className="formrow">
+            <div style={{ flex: 2 }}><label className="f">Изделие</label><input value={inForm.product} onChange={e => setInForm({ ...inForm, product: e.target.value })} /></div>
+            <div><label className="f">Размер</label><input value={inForm.size} onChange={e => setInForm({ ...inForm, size: e.target.value })} /></div>
+            <div><label className="f">Штук</label><input type="number" value={inForm.qty} onChange={e => setInForm({ ...inForm, qty: e.target.value })} /></div>
           </div>
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead><tr><th>Изделие</th><th className="num">Движение</th><th>Примечание</th><th>Дата</th></tr></thead>
-              <tbody>
-                {fg.map(f => (
-                  <tr key={f.id}><td>{f.product_name}</td>
-                    <td className="num" style={{ color: f.qty > 0 ? 'var(--green)' : 'var(--red)' }}>{f.qty > 0 ? '+' : ''}{f.qty}</td>
-                    <td>{f.note}</td><td>{new Date(f.created_at).toLocaleDateString('ru-RU')}</td></tr>
-                ))}
-              </tbody>
-            </table>
+          <button className="btn" disabled={!inForm.product || !inForm.qty} onClick={() => run(async () => {
+            await api.post('/goods-movements/', { kind: 'in', ...inForm }); setInForm({ ...inForm, product: '', size: '', qty: '' })
+          })}>Внести</button>
+        </div>
+        <div className="card" style={{ padding: 0 }}>
+          <div className="toolbar"><b>Отгрузки и внесения</b></div>
+          <div className="tablewrap" style={{ maxHeight: 340, overflowY: 'auto' }}><table>
+            <tbody>
+              {moves.length === 0 && <tr><td className="muted">Записей нет.</td></tr>}
+              {moves.map(m => (
+                <tr key={m.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{dmy(m.date)}</td>
+                  <td>{m.kind === 'out' ? <span className="pill low">отгрузка</span> : <span className="pill ok">внесено</span>}</td>
+                  <td>{m.product} {m.size}{m.contract_number && <div className="muted">договор {m.contract_number}</div>}</td>
+                  <td className="num">{m.qty}</td>
+                  <td><button className="btn small ghost" onClick={() => confirm('Удалить запись?') && run(() => api.delete(`/goods-movements/${m.id}/`))}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function Suppliers({ suppliers, reload }) {
+  const empty = { name: '', phone: '', email: '', bin_iin: '' }
+  const [form, setForm] = useState(empty)
+  const [editId, setEditId] = useState(null)
+  const save = async () => {
+    try {
+      if (editId) await api.patch(`/suppliers/${editId}/`, form)
+      else await api.post('/suppliers/', form)
+      setForm(empty); setEditId(null); reload()
+    } catch (e) { alert(apiError(e)) }
+  }
+  return (
+    <>
+      <div className="card stitch">
+        <h2>{editId ? 'Изменить поставщика' : 'Новый поставщик'}</h2>
+        <div className="formrow">
+          <div style={{ flex: 2 }}><label className="f">Название</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+          <div><label className="f">Телефон</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+          <div><label className="f">Email</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+          <div><label className="f">БИН/ИИН</label><input value={form.bin_iin} onChange={e => setForm({ ...form, bin_iin: e.target.value })} /></div>
+          <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 6 }}>
+            <button className="btn" onClick={save} disabled={!form.name}>Сохранить</button>
+            {editId && <button className="btn ghost" onClick={() => { setEditId(null); setForm(empty) }}>Отмена</button>}
           </div>
-        </>
-      )}
-    </div>
+        </div>
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        <table>
+          <thead><tr><th>Название</th><th>Телефон</th><th>Email</th><th>БИН/ИИН</th><th /></tr></thead>
+          <tbody>
+            {suppliers.length === 0 && <tr><td colSpan={5} className="muted">Поставщиков нет.</td></tr>}
+            {suppliers.map(s => (
+              <tr key={s.id}><td><b>{s.name}</b></td><td>{s.phone || '—'}</td><td>{s.email || '—'}</td><td>{s.bin_iin || '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn small ghost" onClick={() => { setEditId(s.id); setForm({ name: s.name, phone: s.phone || '', email: s.email || '', bin_iin: s.bin_iin || '' }) }}>Изм.</button>{' '}
+                  <button className="btn small ghost" onClick={async () => { if (!confirm(`Удалить «${s.name}»?`)) return
+                    try { await api.delete(`/suppliers/${s.id}/`); reload() } catch (e) { alert(apiError(e)) } }}>Удл.</button>
+                </td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }

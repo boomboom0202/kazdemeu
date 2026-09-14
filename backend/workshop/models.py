@@ -1,10 +1,13 @@
 """Цех так, как его ведут в «цех отчёт.xlsx».
 
-Заказ цеха — это изделие и сетка размеров с планом. По каждому размеру
-отдельно копятся факты: сколько скроили (и сколько ушло ткани), сколько
-вышили, сколько выдали бригадам на пошив и насколько они готовы по дням,
-сколько упаковали. Из этих фактов и складывается картина «сколько сшито
-по размерам», в которую можно провалиться с уровня заказа.
+Заказ цеха запускается из договора: изделие и сетка размеров с планом.
+Заказ проходит этапы — их набор и порядок задаются в настройках цеха
+(Крой, Вышивка, Тигин, Чистка, Упаковка…). Каждый этап — это лист
+отчёта цеха: у кроя записи с расходом ткани, у пошива партии бригад
+с готовностью по дням, у остальных — штуки по размерам.
+
+Записи ссылаются на этап заказа и размер с PROTECT: это факты. Этап или
+размер, по которому уже работали, нельзя удалить вместе с историей.
 """
 from decimal import Decimal
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -13,6 +16,47 @@ from django.utils import timezone
 
 NON_NEGATIVE = [MinValueValidator(Decimal("0"))]
 AT_LEAST_ONE = [MinValueValidator(1)]
+
+
+class StageTemplate(models.Model):
+    """Этап цеха из настроек. Вид этапа определяет, как выглядит его лист."""
+    class Kind(models.TextChoices):
+        CUT = "cut", "Крой — штуки и расход ткани"
+        COUNT = "count", "Штуки по размерам"
+        SEWING = "sewing", "Пошив — партии бригад, готовность по дням"
+
+    name = models.CharField("Этап", max_length=60, unique=True)
+    kind = models.CharField("Вид листа", max_length=10, choices=Kind.choices, default=Kind.COUNT)
+    extra_label = models.CharField(
+        "Дополнительная колонка", max_length=40, blank=True,
+        help_text="Например «Вид» у вышивки: полный, карман. Пусто — колонки нет")
+    position = models.PositiveSmallIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Включать в новые заказы", default=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.name
+
+
+DEFAULT_STAGES = [
+    # название, вид, доп. колонка, в новых заказах
+    ("Крой", StageTemplate.Kind.CUT, "", True),
+    ("Вышивка", StageTemplate.Kind.COUNT, "Вид", True),
+    ("Тигин", StageTemplate.Kind.SEWING, "", True),
+    ("Чистка", StageTemplate.Kind.COUNT, "", True),
+    ("Упаковка", StageTemplate.Kind.COUNT, "", True),
+]
+
+
+def ensure_default_stages():
+    """Стандартные этапы, если настройки цеха пусты."""
+    if StageTemplate.objects.exists():
+        return
+    for pos, (name, kind, extra, active) in enumerate(DEFAULT_STAGES):
+        StageTemplate.objects.create(name=name, kind=kind, extra_label=extra,
+                                     position=pos, is_active=active)
 
 
 class Brigade(models.Model):
@@ -31,7 +75,7 @@ class Brigade(models.Model):
 
 
 class WorkOrder(models.Model):
-    """Заказ цеха: какое изделие шьём и в каких размерах."""
+    """Заказ цеха: какое изделие шьём по договору и в каких размерах."""
     class Status(models.TextChoices):
         IN_WORK = "in_work", "В работе"
         DONE = "done", "Сдан"
@@ -39,10 +83,8 @@ class WorkOrder(models.Model):
     product = models.CharField("Изделие", max_length=150)
     contract = models.ForeignKey("contracts.Contract", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="work_orders")
-    project = models.ForeignKey("projects.Project", null=True, blank=True,
-                                on_delete=models.SET_NULL, related_name="work_orders")
     client = models.CharField("Для кого", max_length=200, blank=True,
-                              help_text="Если договора нет: «Павлодар», «частный заказ»")
+                              help_text="Если договора нет: «частный заказ»")
     deadline = models.DateField("Срок", null=True, blank=True)
     sewing_rate = models.DecimalField("Расценка пошива, ₸/шт", max_digits=10, decimal_places=2,
                                       default=0, validators=NON_NEGATIVE)
@@ -56,6 +98,20 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return self.product
+
+
+class WorkOrderStage(models.Model):
+    """Этап, который проходит этот заказ. Порядок этапов общий для всех
+    заказов — из настроек цеха: переставили этап там, и он переставился везде."""
+    order = models.ForeignKey(WorkOrder, on_delete=models.CASCADE, related_name="stages")
+    template = models.ForeignKey(StageTemplate, on_delete=models.PROTECT, related_name="order_stages")
+
+    class Meta:
+        ordering = ["template__position", "template_id"]
+        unique_together = ("order", "template")
+
+    def __str__(self):
+        return f"{self.order.product}: {self.template.name}"
 
 
 class WorkSize(models.Model):
@@ -73,16 +129,13 @@ class WorkSize(models.Model):
         return f"{self.order.product} {self.size}"
 
 
-# Записи цеха ссылаются на размер с PROTECT: это факты. Размер, по которому
-# уже кроили или шили, нельзя удалить вместе с историей — только исправить
-# записи. По той же причине не удалится заказ, в котором есть записи.
-
-class CutEntry(models.Model):
-    """Крой за день. На одну кройку уходит и основа, и подклад, и флис,
-    поэтому расход ткани лежит отдельными строками по материалам."""
-    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="cuts")
+class StageEntry(models.Model):
+    """Запись этапа за день: сколько штук размера прошло этап."""
+    stage = models.ForeignKey(WorkOrderStage, on_delete=models.PROTECT, related_name="entries")
+    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="entries")
     date = models.DateField("Дата", default=timezone.localdate)
-    qty = models.PositiveIntegerField("Скроено, шт", validators=AT_LEAST_ONE)
+    qty = models.PositiveIntegerField("Штук", validators=AT_LEAST_ONE)
+    extra = models.CharField("Доп. колонка", max_length=60, blank=True)
     note = models.CharField("Примечание", max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -90,37 +143,27 @@ class CutEntry(models.Model):
         ordering = ["-date", "-id"]
 
 
-class CutMaterial(models.Model):
-    cut = models.ForeignKey(CutEntry, on_delete=models.CASCADE, related_name="materials")
+class EntryMaterial(models.Model):
+    """Расход ткани в записи кроя: на одну кройку уходит и основа, и подклад."""
+    entry = models.ForeignKey(StageEntry, on_delete=models.CASCADE, related_name="materials")
     material = models.CharField("Материал", max_length=60)
     meters = models.DecimalField("Расход, м", max_digits=10, decimal_places=2,
                                  validators=NON_NEGATIVE)
 
     class Meta:
         ordering = ["id"]
-        unique_together = ("cut", "material")
+        unique_together = ("entry", "material")
 
     @property
     def per_unit(self):
         """Метров на штуку — в отчёте его считают на полях руками (2,44 м)."""
-        return self.meters / self.cut.qty if self.cut.qty else Decimal("0")
-
-
-class EmbroideryEntry(models.Model):
-    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="embroidery")
-    date = models.DateField("Дата", default=timezone.localdate)
-    qty = models.PositiveIntegerField("Вышито, шт", validators=AT_LEAST_ONE)
-    kind = models.CharField("Вид", max_length=60, blank=True, help_text="полный, карман…")
-    note = models.CharField("Примечание", max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-date", "-id"]
+        return self.meters / self.entry.qty if self.entry.qty else Decimal("0")
 
 
 class SewingJob(models.Model):
-    """Партия размера, выданная бригаде на пошив."""
-    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="sewing")
+    """Партия размера, выданная бригаде на этапе пошива."""
+    stage = models.ForeignKey(WorkOrderStage, on_delete=models.PROTECT, related_name="jobs")
+    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="jobs")
     brigade = models.ForeignKey(Brigade, on_delete=models.PROTECT, related_name="jobs")
     qty = models.PositiveIntegerField("Выдано, шт", validators=AT_LEAST_ONE)
     started = models.DateField("Выдано", default=timezone.localdate)
@@ -141,15 +184,3 @@ class SewingProgress(models.Model):
 
     class Meta:
         ordering = ["date", "id"]
-
-
-class PackEntry(models.Model):
-    """Упаковка: готовые изделия ушли со стола цеха."""
-    size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="packs")
-    date = models.DateField("Дата", default=timezone.localdate)
-    qty = models.PositiveIntegerField("Упаковано, шт", validators=AT_LEAST_ONE)
-    note = models.CharField("Примечание", max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-date", "-id"]

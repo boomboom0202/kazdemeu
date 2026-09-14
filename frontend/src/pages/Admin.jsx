@@ -3,9 +3,9 @@ import { api, apiError } from '../api'
 import AccessRules from '../components/AccessRules'
 
 const ROLES = {
-  admin: 'Администратор', director: 'Директор', manager: 'Менеджер (тендеры/договоры)',
-  technologist: 'Технолог', accountant: 'Бухгалтер', warehouse: 'Кладовщик',
-  worker: 'Сотрудник цеха', viewer: 'Только просмотр',
+  admin: 'Администратор', director: 'Директор', manager: 'Менеджер (тендеры, договоры)',
+  technologist: 'Технолог цеха', accountant: 'Бухгалтер (оплаты, расходы, финансы)',
+  warehouse: 'Кладовщик', worker: 'Сотрудник цеха (записи этапов)', viewer: 'Только просмотр',
 }
 
 export default function Admin() {
@@ -15,7 +15,7 @@ export default function Admin() {
   const [form, setForm] = useState({ username: '', password: '', first_name: '', role: 'worker' })
 
   const load = () => {
-    api.get('/users/?page_size=100').then(r => setUsers(r.data.results || []))
+    api.get('/users/?page_size=500').then(r => setUsers(r.data.results || []))
     api.get('/audit-log/?page_size=100').then(r => setLog(r.data.results || []))
   }
   useEffect(load, [])
@@ -72,7 +72,7 @@ export default function Admin() {
                 </select></div>
               <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={create} disabled={!form.username || !form.password}>Добавить</button></div>
             </div>
-            <p className="muted">Роль определяет право записи: менеджер — договоры/каталог, бухгалтер — финансы, кладовщик — склад, сотрудник цеха — этапы производства. Чтение доступно всем.</p>
+            <p className="muted">Роль задаёт доступ по умолчанию: менеджер ведёт тендеры и договоры, бухгалтер — оплаты, расходы и финансы, технолог — цех, сотрудник цеха вносит записи этапов, кладовщик — склад. Технолог и «только просмотр» видят договоры без денег. Уточнить права конкретному человеку — во вкладке «Точечные права».</p>
           </div>
           <div className="card" style={{ padding: 0 }}>
             <table>

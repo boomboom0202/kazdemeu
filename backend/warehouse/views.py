@@ -3,11 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from accounts.permissions import RoleSectionPermission
 from accounts.mixins import SafeDestroyMixin
-from .models import (Supplier, Material, MaterialBatch, StockMovement,
-                     FinishedGoodsMovement, PurchaseOrder, check_low_stock)
+from .goods import goods_lines
+from .models import Supplier, Material, MaterialBatch, StockMovement, GoodsMovement, check_low_stock
 from .serializers import (SupplierSerializer, MaterialSerializer, MaterialBatchSerializer,
-                          StockMovementSerializer, FinishedGoodsMovementSerializer,
-                          PurchaseOrderSerializer)
+                          StockMovementSerializer, GoodsMovementSerializer)
 
 
 class Base(SafeDestroyMixin, viewsets.ModelViewSet):
@@ -24,76 +23,65 @@ class SupplierViewSet(Base):
 
 class MaterialViewSet(Base):
     access_key = "warehouse.materials"
-    queryset = Material.objects.select_related("default_supplier")
+    queryset = Material.objects.select_related("default_supplier").prefetch_related("batches")
     serializer_class = MaterialSerializer
     search_fields = ["name", "sku"]
 
     @action(detail=False, methods=["post"])
     def check_stock(self, request):
-        """Пройтись по всем материалам, создать уведомления/авто-заявки."""
+        """Пройтись по материалам и напомнить уведомлением о тех, что заканчиваются."""
+        low = 0
         for m in Material.objects.all():
-            check_low_stock(m)
-        return Response({"status": "ok"})
+            if m.min_stock and m.stock < m.min_stock:
+                low += 1
+                check_low_stock(m)
+        return Response({"low": low})
 
 
 class MaterialBatchViewSet(Base):
-    access_key = "warehouse.batches"
+    access_key = "warehouse.receipts"
     queryset = MaterialBatch.objects.select_related("material", "supplier")
     serializer_class = MaterialBatchSerializer
     filterset_fields = ["material", "supplier"]
+    http_method_names = ["get", "post", "head", "options"]
 
     @action(detail=True, methods=["post"])
     def reverse(self, request, pk=None):
-        """Сторно прихода: возвращает остаток и среднюю цену к состоянию до партии.
-        Блокируется, если материал уже израсходован (остаток стал бы отрицательным)."""
+        """Сторно прихода. Блокируется, если материал из партии уже выдан."""
         batch = self.get_object()
         if batch.material.stock - batch.qty < 0:
             return Response(
-                {"detail": "Нельзя сторнировать: материал из этой партии уже израсходован — "
-                           "остаток стал бы отрицательным."},
-                status=400)
+                {"detail": "Нельзя сторнировать: материал из этой партии уже выдан — "
+                           "остаток стал бы отрицательным."}, status=400)
         StockMovement.objects.create(
-            material=batch.material, qty=-batch.qty,
-            reason=StockMovement.Reason.RETURN,
-            note=f"Сторно прихода партии {batch.batch_no or batch.pk}",
-        )
+            material=batch.material, qty=-batch.qty, reason=StockMovement.Reason.RETURN,
+            note=f"Сторно прихода партии {batch.batch_no or batch.pk}", created_by=request.user)
         batch.delete()
         return Response({"status": "ok"})
 
 
 class StockMovementViewSet(Base):
-    access_key = "warehouse.movements"
-    queryset = StockMovement.objects.select_related("material")
+    access_key = "warehouse.issues"
+    queryset = StockMovement.objects.select_related("material", "created_by", "work_order")
     serializer_class = StockMovementSerializer
-    filterset_fields = ["material", "reason"]
+    filterset_fields = ["material", "reason", "work_order"]
+    http_method_names = ["get", "post", "head", "options"]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
 
-class FinishedGoodsViewSet(Base):
-    access_key = "warehouse.fg"
-    queryset = FinishedGoodsMovement.objects.select_related("product")
-    serializer_class = FinishedGoodsMovementSerializer
-    filterset_fields = ["product", "contract"]
+class GoodsMovementViewSet(Base):
+    access_key = "warehouse.goods"
+    queryset = GoodsMovement.objects.select_related("contract", "work_order", "created_by")
+    serializer_class = GoodsMovementSerializer
+    filterset_fields = ["kind", "contract", "work_order"]
+    http_method_names = ["get", "post", "delete", "head", "options"]
 
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
-class PurchaseOrderViewSet(Base):
-    access_key = "warehouse.purchase"
-    queryset = PurchaseOrder.objects.select_related("supplier", "material")
-    serializer_class = PurchaseOrderSerializer
-    filterset_fields = ["status", "supplier", "auto_created"]
-
-    @action(detail=True, methods=["post"])
-    def receive(self, request, pk=None):
-        """Приёмка заявки: создаёт партию и приход на склад."""
-        po = self.get_object()
-        price = request.data.get("unit_price") or 0
-        MaterialBatch.objects.create(
-            material=po.material, supplier=po.supplier, qty=po.qty,
-            unit_price=price, received_at=request.data.get("received_at") or __import__("datetime").date.today(),
-            batch_no=request.data.get("batch_no", ""),
-        )
-        po.status = PurchaseOrder.Status.RECEIVED
-        po.save(update_fields=["status"])
-        return Response(PurchaseOrderSerializer(po).data)
+    @action(detail=False, methods=["get"])
+    def stock(self, request):
+        """Остаток готовой продукции по заказам и размерам."""
+        return Response(goods_lines())

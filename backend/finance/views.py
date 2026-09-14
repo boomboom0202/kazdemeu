@@ -1,200 +1,219 @@
-from collections import defaultdict
-from datetime import date, timedelta
+"""Финансы: сводка денег по договорам и месяцам, административные расходы,
+прочие поступления."""
+from collections import OrderedDict
 from decimal import Decimal
-from rest_framework import viewsets
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import section_read
-from rest_framework.response import Response
-from django.db.models import Sum, Q
+from django.db import transaction
+from django.db.models import Sum
 from django.db.models.functions import TruncMonth
-from accounts.permissions import RoleSectionPermission
+from rest_framework import viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import MultiPartParser
+from rest_framework.response import Response
+from accounts.permissions import RoleSectionPermission, section_read, can_write
 from accounts.mixins import SafeDestroyMixin
-from .models import ExpenseCategory, CashEntry, FixedCost, CostSettings
-from .serializers import (ExpenseCategorySerializer, CashEntrySerializer,
-                          FixedCostSerializer, CostSettingsSerializer)
+from contracts.excel import read_blocks, money
+from contracts.models import Source
+from .calc import assign_months
+from .models import AdminCategory, AdminExpense, OtherIncome
+from .serializers import AdminCategorySerializer, AdminExpenseSerializer, OtherIncomeSerializer
+
+ZERO = Decimal("0")
+NO_DATE = "none"
 
 
-class ExpenseCategoryViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
-    queryset = ExpenseCategory.objects.all().order_by("name")
-    serializer_class = ExpenseCategorySerializer
+def _f(v):
+    return float(round(Decimal(v or 0), 2))
+
+
+def _load_sheet(request):
+    from openpyxl import load_workbook
+    file = request.FILES.get("file")
+    if not file:
+        return None, Response({"detail": "Файл не передан."}, status=400)
+    try:
+        return load_workbook(file, data_only=True).active, None
+    except Exception:
+        return None, Response({"detail": "Не удалось открыть файл. Нужен формат .xlsx."}, status=400)
+
+
+class Base(SafeDestroyMixin, viewsets.ModelViewSet):
     permission_classes = [RoleSectionPermission]
     section = "finance"
 
 
-class CashEntryViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
-    access_key = "finance.entries"
-    queryset = CashEntry.objects.select_related("category", "contract")
-    serializer_class = CashEntrySerializer
-    permission_classes = [RoleSectionPermission]
-    section = "finance"
-    filterset_fields = ["direction", "category", "contract"]
+class AdminCategoryViewSet(Base):
+    access_key = "finance.admin"
+    queryset = AdminCategory.objects.prefetch_related("expenses")
+    serializer_class = AdminCategorySerializer
 
 
-class FixedCostViewSet(SafeDestroyMixin, viewsets.ModelViewSet):
-    """Постоянные расходы — вводятся один раз, действуют ежемесячно."""
-    access_key = "finance.fixed"
-    queryset = FixedCost.objects.select_related("category")
-    serializer_class = FixedCostSerializer
-    permission_classes = [RoleSectionPermission]
-    section = "finance"
-    filterset_fields = ["is_active"]
+class AdminExpenseViewSet(Base):
+    access_key = "finance.admin"
+    queryset = AdminExpense.objects.select_related("category")
+    serializer_class = AdminExpenseSerializer
+    filterset_fields = {"category": ["exact"], "month": ["exact", "isnull"], "source": ["exact"]}
+    search_fields = ["comment"]
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        """Статья × месяц — то, чего нет в самой таблице, но что из неё следует.
+        Рядом с фактом — план статьи в месяц, если он задан."""
+        rows = (AdminExpense.objects.values("category_id", "month")
+                .annotate(total=Sum("amount")).order_by())
+        cats = OrderedDict((c.id, {"id": c.id, "name": c.name, "monthly_plan": _f(c.monthly_plan),
+                                   "total": 0.0, "months": {}})
+                           for c in AdminCategory.objects.all())
+        months, by_month = set(), {}
+        for r in rows:
+            key = r["month"].strftime("%Y-%m") if r["month"] else NO_DATE
+            v = _f(r["total"])
+            months.add(key)
+            c = cats.get(r["category_id"])
+            if c:
+                c["months"][key] = round(c["months"].get(key, 0) + v, 2)
+                c["total"] = round(c["total"] + v, 2)
+            by_month[key] = round(by_month.get(key, 0) + v, 2)
+        order = sorted(m for m in months if m != NO_DATE) + ([NO_DATE] if NO_DATE in months else [])
+        return Response({"categories": list(cats.values()), "months": order, "by_month": by_month,
+                         "total": round(sum(by_month.values()), 2),
+                         "plan_total": round(sum(c["monthly_plan"] for c in cats.values()), 2)})
+
+    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
+    def import_excel(self, request):
+        """Загрузка «Расход административные.xlsx»: пара колонок — статья.
+
+        Месяц достаётся из комментария, у строк без месяца — от строки выше.
+        Повторная загрузка заменяет строки из Excel у статей файла, ручные остаются.
+        """
+        if not can_write(request.user, "finance.admin"):
+            return Response({"detail": "Нет права вносить административные расходы."}, status=403)
+        ws, err = _load_sheet(request)
+        if err:
+            return err
+        blocks = read_blocks(ws)
+        if not blocks:
+            return Response({"detail": "Не нашёл статей: названия должны быть в первой строке, "
+                                       "под каждой — сумма и комментарий."}, status=400)
+        rep = {"categories_created": 0, "expenses": 0, "without_month": 0, "warnings": []}
+        with transaction.atomic():
+            resolved, cleared = [], set()
+            for i, (name, lines) in enumerate(blocks):
+                title = name[:1].upper() + name[1:]
+                cat = AdminCategory.objects.filter(name__iexact=title).first()
+                if not cat:
+                    cat = AdminCategory.objects.create(name=title[:150], position=i)
+                    rep["categories_created"] += 1
+                if cat.id not in cleared:
+                    AdminExpense.objects.filter(category=cat, source=Source.EXCEL).delete()
+                    cleared.add(cat.id)
+                resolved.append((cat, name, lines))
+            for cat, name, lines in resolved:
+                months = assign_months([t for _, _, t in lines])
+                base = AdminExpense.objects.filter(category=cat).count()
+                for pos, ((row, raw, text), month) in enumerate(zip(lines, months), start=1):
+                    amount = money(raw)
+                    if amount is None or amount <= 0:
+                        if raw not in (None, ""):
+                            rep["warnings"].append(f"«{name}», строка {row}: «{raw}» — не сумма, пропущено.")
+                        continue
+                    AdminExpense.objects.create(category=cat, amount=amount, comment=text[:255],
+                                                month=month, source=Source.EXCEL, position=base + pos)
+                    rep["expenses"] += 1
+                    rep["without_month"] += month is None
+        return Response(rep)
 
 
-@api_view(["GET", "PATCH"])
-@permission_classes([section_read("finance.settings")])
-def cost_settings(request):
-    """Настройки расчёта себестоимости (одна запись).
-
-    Читают те, у кого есть доступ к финансам, меняют — у кого есть право записи.
-    Раньше чтение было открыто всем вошедшим, а оно отдаёт сумму постоянных
-    расходов и ставку накладных — это финансовые данные.
-    """
-    from accounts.permissions import can_write
-    obj = CostSettings.get_solo()
-    if request.method == "PATCH":
-        if not can_write(request.user, "finance"):
-            return Response({"detail": "Недостаточно прав."}, status=403)
-        ser = CostSettingsSerializer(obj, data=request.data, partial=True)
-        ser.is_valid(raise_exception=True)
-        ser.save()
-        return Response(ser.data)
-    return Response(CostSettingsSerializer(obj).data)
+class OtherIncomeViewSet(Base):
+    access_key = "finance.income"
+    queryset = OtherIncome.objects.all()
+    serializer_class = OtherIncomeSerializer
 
 
-def _month_series(qs):
-    rows = (qs.annotate(m=TruncMonth("date")).values("m", "direction")
-              .annotate(total=Sum("amount")).order_by("m"))
-    by_month = defaultdict(lambda: {"income": 0, "expense": 0})
+def _by_month(qs, field, amount="amount"):
+    """{YYYY-MM | none: сумма} одним запросом."""
+    out = {}
+    rows = (qs.annotate(m=TruncMonth(field)).values("m").annotate(t=Sum(amount)).order_by())
     for r in rows:
-        key = r["m"].strftime("%Y-%m")
-        if r["direction"] == "in":
-            by_month[key]["income"] = float(r["total"])
-        else:
-            by_month[key]["expense"] = float(r["total"])
-    out, balance = [], 0.0
-    for m in sorted(by_month):
-        d = by_month[m]
-        net = d["income"] - d["expense"]
-        balance += net
-        out.append({"month": m, **d, "net": net, "balance": balance})
+        key = r["m"].strftime("%Y-%m") if r["m"] else NO_DATE
+        out[key] = out.get(key, 0.0) + _f(r["t"])
     return out
 
 
 @api_view(["GET"])
 @permission_classes([section_read("finance.reports")])
-def cashflow_report(request):
-    """ДДС/ОДДС: помесячно приход/расход/чистый поток/остаток."""
-    return Response({
-        "series": _month_series(CashEntry.objects.all()),
-        "balance": float(
-            (CashEntry.objects.filter(direction="in").aggregate(s=Sum("amount"))["s"] or 0)
-            - (CashEntry.objects.filter(direction="out").aggregate(s=Sum("amount"))["s"] or 0)),
-    })
+def summary(request):
+    return Response(build_summary())
 
 
-@api_view(["GET"])
-@permission_classes([section_read("finance.reports")])
-def pnl_report(request):
-    """ОПиУ: доходы/расходы по категориям, чистая прибыль, рентабельность,
-    структура расходов и деление постоянные/переменные."""
-    income = CashEntry.objects.filter(direction="in").aggregate(s=Sum("amount"))["s"] or Decimal(0)
-    exp_rows = (CashEntry.objects.filter(direction="out")
-                .values("category__name", "category__kind").annotate(total=Sum("amount")))
-    expenses = [{"category": r["category__name"] or "Без категории",
-                 "kind": r["category__kind"] or "variable",
-                 "total": float(r["total"])} for r in exp_rows]
-    total_exp = sum(e["total"] for e in expenses)
-    net = float(income) - total_exp
-    return Response({
-        "income": float(income),
-        "expenses": expenses,
-        "total_expenses": total_exp,
-        "net_profit": net,
-        "profitability_percent": round(net / float(income) * 100, 2) if income else 0,
-        "fixed_total": sum(e["total"] for e in expenses if e["kind"] == "fixed"),
-        "variable_total": sum(e["total"] for e in expenses if e["kind"] == "variable"),
-    })
+def build_summary():
+    """Сводка денег: сколько заказчики заплатили, сколько ушло на договоры
+    и на административные расходы — всего и по месяцам, и по каждому договору.
 
-
-@api_view(["GET"])
-@permission_classes([section_read("finance.reports")])
-def forecast_report(request):
-    """Потенциальные поступления (воронка): взвешенные по стадии договора +
-    неоплаченный остаток графика платежей."""
-    from contracts.models import Contract
-    weights = {"new": 0.1, "negotiation": 0.4, "in_progress": 0.9}
-    funnel = []
-    expected = 0.0
-    for c in Contract.objects.exclude(status__in=["closed", "cancelled"]):
-        remaining = float(c.amount) - float(c.paid_amount)
-        w = weights.get(c.status, 0)
-        funnel.append({"contract": c.number, "customer": c.customer.name,
-                       "status": c.status, "remaining": remaining,
-                       "probability": w, "weighted": remaining * w})
-        expected += remaining * w
-    return Response({"funnel": funnel, "expected_total": round(expected, 2)})
-
-
-@api_view(["GET"])
-@permission_classes([section_read("finance.fixed")])
-def fixed_costs_plan_fact(request):
-    """Сверка постоянных расходов: норматив против фактических выплат.
-
-    Себестоимость считается по нормативу («аренда обходится в 450 000
-    в месяц») — иначе в месяц квартального платежа изделие дорожало бы
-    втрое. ОПиУ показывает факт. Расхождение между ними и есть то, ради
-    чего постоянный расход вводится отдельно от операции по кассе, но
-    до сих пор его негде было увидеть: поле «Категория» у постоянного
-    расхода хранилось и никак не использовалось.
-
-    Сверка идёт по категории: у нескольких постоянных расходов она может
-    совпадать, поэтому план и факт складываются по категории, а не по
-    отдельной строке.
+    Строки «Расходов», загруженные из Excel, даты не имеют — они собираются
+    в колонку «без даты», а не размазываются по месяцам.
     """
-    from django.utils import timezone
-    from collections import OrderedDict
+    from contracts.models import Contract, ContractPayment, ContractExpense, ExpenseKind
 
-    today = timezone.localdate()
-    month_start = today.replace(day=1)
-    if request.query_params.get("month"):          # YYYY-MM, для сверки за прошлые месяцы
-        try:
-            y, m = request.query_params["month"].split("-")
-            month_start = date(int(y), int(m), 1)
-        except (ValueError, TypeError):
-            pass
-    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    contracts = list(Contract.objects.exclude(status=Contract.Status.CANCELLED)
+                     .select_related("customer").prefetch_related("payments", "expenses"))
+    rows = []
+    tot = {"amount": ZERO, "paid": ZERO, "expenses": ZERO}
+    minus = 0
+    for c in contracts:
+        paid, spent = c.paid_amount, c.expenses_total
+        tot["amount"] += c.amount
+        tot["paid"] += paid
+        tot["expenses"] += spent
+        if spent and paid - spent < 0:
+            minus += 1
+        rows.append({"id": c.id, "number": c.purchase_no or c.number, "customer": c.customer.name,
+                     "title": c.title, "status": c.status, "status_display": c.get_status_display(),
+                     "amount": _f(c.amount), "paid": _f(paid), "expenses": _f(spent),
+                     "profit": _f(c.amount - spent), "balance": _f(paid - spent),
+                     "debt": _f(max(c.amount - paid, ZERO))})
 
-    facts = {
-        r["category_id"]: r["total"]
-        for r in CashEntry.objects.filter(direction="out", date__gte=month_start,
-                                          date__lt=next_month)
-        .values("category_id").annotate(total=Sum("amount"))
-    }
+    active = ContractPayment.objects.exclude(contract__status=Contract.Status.CANCELLED)
+    spent_qs = ContractExpense.objects.exclude(contract__status=Contract.Status.CANCELLED)
+    income_m = _by_month(active, "date")
+    expense_m = _by_month(spent_qs, "date")
+    admin_m = _by_month(AdminExpense.objects.all(), "month")
+    other_m = _by_month(OtherIncome.objects.all(), "date")
 
-    rows, without_category = OrderedDict(), []
-    for fc in FixedCost.objects.filter(is_active=True).select_related("category"):
-        if fc.category_id is None:
-            without_category.append({"name": fc.name, "plan": float(fc.monthly_amount)})
-            continue
-        row = rows.setdefault(fc.category_id, {
-            "category": fc.category.name, "plan": 0.0, "items": []})
-        row["plan"] += float(fc.monthly_amount)
-        row["items"].append(fc.name)
+    keys = set(income_m) | set(expense_m) | set(admin_m) | set(other_m)
+    order = sorted(k for k in keys if k != NO_DATE) + ([NO_DATE] if NO_DATE in keys else [])
+    months, running = [], 0.0
+    for k in order:
+        inc, oth = income_m.get(k, 0.0), other_m.get(k, 0.0)
+        exp, adm = expense_m.get(k, 0.0), admin_m.get(k, 0.0)
+        net = round(inc + oth - exp - adm, 2)
+        running = round(running + net, 2)
+        months.append({"month": k, "income": round(inc, 2), "other_income": round(oth, 2),
+                       "contract_expenses": round(exp, 2), "admin_expenses": round(adm, 2),
+                       "net": net, "cumulative": running})
 
-    result = []
-    for cat_id, row in rows.items():
-        fact = float(facts.get(cat_id) or 0)
-        result.append({**row, "fact": fact, "diff": round(fact - row["plan"], 2)})
-    result.sort(key=lambda r: -r["plan"])
+    labels = dict(ExpenseKind.choices)
+    kinds = [{"kind": r["kind"], "label": labels.get(r["kind"], r["kind"]), "total": _f(r["t"])}
+             for r in spent_qs.values("kind").annotate(t=Sum("amount")).order_by("-t")]
 
-    plan_total = sum(r["plan"] for r in result) + sum(r["plan"] for r in without_category)
-    fact_total = sum(r["fact"] for r in result)
-    return Response({
-        "month": month_start.strftime("%Y-%m"),
-        "rows": result,
-        "without_category": without_category,
-        "plan_total": round(plan_total, 2),
-        "fact_total": round(fact_total, 2),
-        "diff_total": round(fact_total - plan_total, 2),
+    admin_total = _f(AdminExpense.objects.aggregate(s=Sum("amount"))["s"])
+    other_total = _f(OtherIncome.objects.aggregate(s=Sum("amount"))["s"])
+    paid, spent = _f(tot["paid"]), _f(tot["expenses"])
+    return ({
+        "contracts_count": len(contracts),
+        "contracts_amount": _f(tot["amount"]),
+        "paid": paid,
+        "debt": round(sum(r["debt"] for r in rows), 2),
+        "contract_expenses": spent,
+        "contracts_profit": round(_f(tot["amount"]) - spent, 2),
+        "admin_expenses": admin_total,
+        "other_income": other_total,
+        # живые деньги: всё полученное минус всё потраченное
+        "cash": round(paid + other_total - spent - admin_total, 2),
+        # итог, когда заказчики доплатят долги
+        "expected_result": round(_f(tot["amount"]) + other_total - spent - admin_total, 2),
+        "minus_count": minus,
+        "months": months,
+        "kinds": kinds,
+        "contracts": rows,
     })
+

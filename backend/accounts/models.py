@@ -5,12 +5,12 @@ from django.db import models
 class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = "admin", "Администратор"
-        DIRECTOR = "director", "Директор (обзор и решения по тендерам)"
-        MANAGER = "manager", "Менеджер (тендеры/договоры)"
-        TECHNOLOGIST = "technologist", "Технолог (изделия, BOM, техкарты, нормы)"
-        ACCOUNTANT = "accountant", "Бухгалтер (финансы)"
-        WAREHOUSE = "warehouse", "Кладовщик"
-        WORKER = "worker", "Сотрудник цеха"
+        DIRECTOR = "director", "Директор (видит всё, решает по тендерам)"
+        MANAGER = "manager", "Менеджер (тендеры, договоры)"
+        TECHNOLOGIST = "technologist", "Технолог цеха (заказы, этапы, бригады)"
+        ACCOUNTANT = "accountant", "Бухгалтер (оплаты, расходы, финансы)"
+        WAREHOUSE = "warehouse", "Кладовщик (склад)"
+        WORKER = "worker", "Сотрудник цеха (записи этапов)"
         VIEWER = "viewer", "Только просмотр"
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.VIEWER)

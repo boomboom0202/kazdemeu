@@ -1,34 +1,35 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
-import { api } from './api'
+import { api, can, canAny } from './api'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
+import Tenders from './pages/Tenders'
 import Contracts from './pages/Contracts'
 import ContractDetail from './pages/ContractDetail'
-import Production from './pages/Production'
+import Workshop from './pages/workshop/Workshop'
 import Warehouse from './pages/Warehouse'
 import Finance from './pages/Finance'
-import CostPrice from './pages/CostPrice'
 import Analytics from './pages/Analytics'
 import Chat from './pages/Chat'
 import Admin from './pages/Admin'
-import Tenders from './pages/Tenders'
-import Workshop from './pages/Workshop'
-import WorkOrderDetail from './pages/WorkOrderDetail'
-import Projects from './pages/Projects'
-import ProjectDetail from './pages/ProjectDetail'
-import AdminExpenses from './pages/AdminExpenses'
-import { can } from './api'
 import Notifications from './components/Notifications'
 import { Loader, LoadError } from './components/Loader'
-import { canAny } from './api'
+
+// Меню повторяет порядок работы: тендер → договор → цех → склад → деньги
+const MENU = [
+  ['/tenders', 'Тендеры / План закупок', (u) => canAny(u, 'tenders')],
+  ['/contracts', 'Договоры', (u) => can(u, 'contracts.contracts')],
+  ['/workshop', 'Цех', (u) => canAny(u, 'workshop')],
+  ['/warehouse', 'Склад', (u) => canAny(u, 'warehouse')],
+  ['/finance', 'Финансы', (u) => canAny(u, 'finance')],
+  ['/analytics', 'Аналитика', (u) => can(u, 'analytics')],
+  ['/chat', 'AI-ассистент', () => true],
+  ['/admin', 'Администрирование', (u) => u?.role === 'admin'],
+]
 
 function Layout({ user, onLogout, children }) {
-  // На ширине ≤900px сайдбар превращается в выдвижное меню
   const [navOpen, setNavOpen] = useState(false)
   const close = () => setNavOpen(false)
 
-  // Пока меню открыто, фон не должен прокручиваться под ним
   useEffect(() => {
     document.body.style.overflow = navOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -47,26 +48,10 @@ function Layout({ user, onLogout, children }) {
 
       <aside className={navOpen ? 'sidebar open' : 'sidebar'}>
         <div className="logo">Каз<span>Демеу</span></div>
-        {/* клик по любому пункту закрывает меню на телефоне */}
         <nav className="nav" onClick={close}>
-          <NavLink to="/">Дашборд</NavLink>
-          {canAny(user, 'tenders') && <NavLink to="/tenders">Тендеры / План закупок</NavLink>}
-          {canAny(user, 'contracts') && <NavLink to="/contracts">Договоры</NavLink>}
-          {canAny(user, 'projects') && <NavLink to="/projects">Проекты и расходы</NavLink>}
-          {canAny(user, 'workshop') && <NavLink to="/workshop">Цех</NavLink>}
-          {can(user, 'finance.admin') && <NavLink to="/admin-expenses">Адм. расходы</NavLink>}
-          {/* На этой странице живут два раздела прав: заказы — это «производство»,
-              а изделия, состав, маршруты и конструктор этапов — «каталог».
-              Пункт нужен, если открыт хотя бы один из них: иначе выданное
-              точечное право на изделия некуда нажать. */}
-          {(canAny(user, 'production') || canAny(user, 'catalog')) &&
-            <NavLink to="/production">Изделия и нормы</NavLink>}
-          {canAny(user, 'warehouse') && <NavLink to="/warehouse">Склад</NavLink>}
-          {canAny(user, 'finance') && <NavLink to="/finance">Финансы</NavLink>}
-          {canAny(user, 'finance') && <NavLink to="/cost-price">Себестоимость</NavLink>}
-          {canAny(user, 'analytics') && <NavLink to="/analytics">Аналитика</NavLink>}
-          <NavLink to="/chat">AI-ассистент</NavLink>
-          {user?.role === 'admin' && <NavLink to="/admin">Администрирование</NavLink>}
+          {MENU.filter(([, , ok]) => ok(user)).map(([to, label]) => (
+            <NavLink key={to} to={to}>{label}</NavLink>
+          ))}
         </nav>
         <div className="userbox">
           <b>{user?.first_name || user?.username}</b>
@@ -84,6 +69,12 @@ function Layout({ user, onLogout, children }) {
   )
 }
 
+/** Стартовая страница — первый доступный раздел по порядку работы. */
+function Home({ user }) {
+  const first = MENU.find(([, , ok]) => ok(user))
+  return <Navigate to={first ? first[0] : '/chat'} replace />
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -91,11 +82,8 @@ export default function App() {
   const navigate = useNavigate()
   const authed = !!localStorage.getItem('access')
 
-  // Профиль определяет, какие разделы показывать в меню: пункты скрыты
-  // через can(user, ...). Раньше ошибка этого запроса молча гасилась,
-  // user оставался null, все проверки прав давали false — и приложение
-  // рисовалось с меню из двух пунктов. Теперь сбой виден и его можно
-  // повторить, не перезагружая страницу.
+  // Профиль определяет, какие разделы показывать. Сбой загрузки виден
+  // и повторяется, а не превращается в меню из двух пунктов.
   const loadMe = useCallback(() => {
     setLoading(true)
     setMeFailed(false)
@@ -124,23 +112,18 @@ export default function App() {
   return (
     <Layout user={user} onLogout={logout}>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Home user={user} />} />
         <Route path="/tenders" element={<Tenders user={user} />} />
         <Route path="/contracts" element={<Contracts user={user} />} />
         <Route path="/contracts/:id" element={<ContractDetail user={user} />} />
-        <Route path="/projects" element={<Projects user={user} />} />
-        <Route path="/projects/:id" element={<ProjectDetail user={user} />} />
-        <Route path="/admin-expenses" element={<AdminExpenses user={user} />} />
-        <Route path="/workshop" element={<Workshop user={user} />} />
-        <Route path="/workshop/:id" element={<WorkOrderDetail user={user} />} />
-        <Route path="/production" element={<Production user={user} />} />
+        <Route path="/workshop/*" element={<Workshop user={user} />} />
         <Route path="/warehouse" element={<Warehouse user={user} />} />
         <Route path="/finance" element={<Finance user={user} />} />
-        <Route path="/cost-price" element={<CostPrice user={user} />} />
         <Route path="/analytics" element={<Analytics user={user} />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/login" element={<Navigate to="/" />} />
+        <Route path="*" element={<Home user={user} />} />
       </Routes>
     </Layout>
   )

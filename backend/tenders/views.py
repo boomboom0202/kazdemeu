@@ -31,8 +31,7 @@ class OwnCompanyViewSet(TenderBase):
 
 class TenderViewSet(TenderBase):
     access_key = "tenders.tenders"
-    queryset = Tender.objects.select_related("platform", "own_company", "product",
-                                             "manager", "contract")
+    queryset = Tender.objects.select_related("platform", "own_company", "manager", "contract")
     serializer_class = TenderSerializer
     filterset_fields = ["status", "platform", "own_company", "manager"]
     search_fields = ["purchase_no", "lot_no", "item_name", "customer_name"]
@@ -54,42 +53,41 @@ class TenderViewSet(TenderBase):
         return Response(TenderSerializer(tender).data)
 
     @action(detail=True, methods=["post"])
-    def calc_cost(self, request, pk=None):
-        """Подтянуть себестоимость из каталога (BOM + труд + накладные)."""
-        tender = self.get_object()
-        if not tender.product:
-            return Response({"detail": "Сначала выберите изделие из каталога."}, status=400)
-        tender.cost_per_unit = tender.product.cost_price
-        tender.save(update_fields=["cost_per_unit", "updated_at"])
-        return Response(TenderSerializer(tender).data)
-
-    @action(detail=True, methods=["post"])
     def make_contract(self, request, pk=None):
-        """Выигранный тендер → договор (одной кнопкой, без повторного ввода)."""
+        """Выигранный тендер → позиция реестра договоров, без повторного ввода.
+
+        Из лота переносится всё, что в реестре есть: номер закупки, фирма,
+        площадка, заказчик, предмет, количество, цена и сумма, срок поставки.
+        Дальше по договору пишутся расходы и оплаты и запускается цех.
+        """
+        from accounts.permissions import can_write
         from contracts.models import Customer, Contract
+        if not can_write(request.user, "contracts.contracts"):
+            return Response({"detail": "Нет права заводить договоры."}, status=403)
         tender = self.get_object()
         if tender.status != Tender.Status.WON:
             return Response({"detail": "Договор создаётся только из выигранного тендера."}, status=400)
         if tender.contract:
             return Response({"detail": f"Договор уже создан: №{tender.contract.number}"}, status=400)
 
-        number = request.data.get("number") or f"Т-{tender.purchase_no or tender.id}"
-        if Contract.objects.filter(number=number).exists():
-            return Response({"detail": f"Договор с номером {number} уже существует."}, status=400)
-
+        price = tender.plan_price or tender.price
+        number = (request.data.get("number") or tender.purchase_no or f"Т-{tender.id}")[:100]
         customer, _ = Customer.objects.get_or_create(name=tender.customer_name.strip()[:255])
         contract = Contract.objects.create(
-            number=number, customer=customer,
-            title=f"{tender.item_name} — {tender.qty} шт",
-            amount=tender.plan_total or tender.customer_total,
-            status=Contract.Status.NEW,
-            specification=tender.note,
-            manager=tender.manager or request.user,
+            number=number, purchase_no=(tender.purchase_no or "")[:100], customer=customer,
+            title=tender.item_name[:255], own_company=tender.own_company,
+            platform=tender.platform.name if tender.platform else "",
+            qty=tender.qty or None, price=price or None,
+            amount=(price or 0) * (tender.qty or 0),
+            delivery_terms=tender.delivery_days, comment=tender.note,
+            status=Contract.Status.NEW, manager=tender.manager or request.user,
             deadline=request.data.get("deadline") or None,
         )
         tender.contract = contract
         tender.save(update_fields=["contract", "updated_at"])
-        return Response(TenderSerializer(tender).data)
+        data = TenderSerializer(tender).data
+        data["contract_id"] = contract.id
+        return Response(data)
 
     @action(detail=False, methods=["get"])
     def funnel(self, request):

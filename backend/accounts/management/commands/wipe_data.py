@@ -1,16 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Полная очистка бизнес-данных перед вводом в эксплуатацию.
+"""Полная очистка бизнес-данных.
 
-Удаляет всё, что накопилось за время демонстраций и проверок: договоры,
-склад, производство, финансы, тендеры, уведомления и журнал действий.
+Удаляет тендеры, договоры с оплатами и расходами, цех, склад, финансы,
+уведомления и журнал действий. НЕ удаляет учётные записи — иначе в систему
+никто не войдёт. Этапы цеха сбрасываются к стандартным.
 
-НЕ удаляет: учётные записи (иначе в систему никто не войдёт) и настройки
-себестоимости — это конфигурация, а не данные.
-Справочник этапов сбрасывается к пяти стандартным.
-
-С флагом --users заодно удаляются все сотрудники, кроме администраторов:
-при вводе в эксплуатацию учётные записи заводятся заново, под настоящих
-людей. Администратор остаётся всегда — без него в систему не войти.
+С флагом --users заодно удаляются все сотрудники, кроме администраторов.
 
 Запуск нарочно требует подтверждения:
     python manage.py wipe_data --yes-i-am-sure [--users]
@@ -20,7 +15,7 @@ from django.db import transaction
 
 
 class Command(BaseCommand):
-    help = "Удалить все бизнес-данные (договоры, склад, производство, финансы, тендеры)"
+    help = "Удалить все бизнес-данные (тендеры, договоры, цех, склад, финансы)"
 
     def add_arguments(self, parser):
         parser.add_argument("--yes-i-am-sure", action="store_true",
@@ -35,39 +30,25 @@ class Command(BaseCommand):
                 "если действительно хотите стереть все бизнес-данные.")
 
         from accounts.models import Notification, AuditLog, User
-        from contracts.models import (Comment, ContractFile, PaymentScheduleItem,
+        from contracts.models import (Comment, ContractFile, ContractPayment, ContractExpense,
                                       Contract, Customer)
-        from finance.models import CashEntry, FixedCost, ExpenseCategory
+        from finance.models import AdminExpense, AdminCategory, OtherIncome
         from tenders.models import Tender, Platform, OwnCompany
-        from production.models import (ProductionStage, ProductionOrder, BOMItem,
-                                       ProductRouteStage, PriceListItem, PriceList,
-                                       Product, StageTemplate, ensure_default_stages)
-        from warehouse.models import (FinishedGoodsMovement, MaterialBatch,
-                                      StockMovement, Material, Supplier,
-                                      PurchaseOrder)
-
-        from workshop.models import (SewingProgress, SewingJob, PackEntry, EmbroideryEntry,
-                                     CutMaterial, CutEntry, WorkSize, WorkOrder, Brigade)
+        from warehouse.models import GoodsMovement, MaterialBatch, StockMovement, Material, Supplier
+        from workshop.models import (SewingProgress, SewingJob, EntryMaterial, StageEntry,
+                                     WorkOrderStage, WorkSize, WorkOrder, Brigade, StageTemplate,
+                                     ensure_default_stages)
 
         # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются.
-        # Журнал и уведомления идут последними: удаление записей само пишется
-        # в журнал, и вычищенный первым он снова оказался бы полным.
-        from projects.models import (ProjectExpense, ProjectIncome, Project, AdminExpense,
-                                     AdminCategory)
-
+        # Журнал и уведомления идут последними: удаление само пишется в журнал.
         plan = [
-            SewingProgress, SewingJob, PackEntry, EmbroideryEntry, CutMaterial, CutEntry,
-            WorkSize, WorkOrder, Brigade,
-            ProjectExpense, ProjectIncome, AdminExpense, AdminCategory, Project,
-            Comment, ContractFile, PaymentScheduleItem, CashEntry,
-            Tender,
-            ProductionStage, ProductionOrder,
-            FinishedGoodsMovement, PurchaseOrder, MaterialBatch, StockMovement,
-            BOMItem, ProductRouteStage, PriceListItem, PriceList,
-            Product, Material, Supplier,
-            Contract, Customer,
-            Platform, OwnCompany,
-            FixedCost, ExpenseCategory, StageTemplate,
+            SewingProgress, SewingJob, EntryMaterial, StageEntry, WorkOrderStage, WorkSize,
+            GoodsMovement, StockMovement, MaterialBatch,
+            WorkOrder, Brigade, StageTemplate,
+            ContractPayment, ContractExpense, Comment, ContractFile, Tender,
+            Contract, Customer, Platform, OwnCompany,
+            Material, Supplier,
+            AdminExpense, AdminCategory, OtherIncome,
         ]
 
         with transaction.atomic():
@@ -76,25 +57,21 @@ class Command(BaseCommand):
                 self.stdout.write(f"  {model.__name__:24} удалено {n}")
 
             if opts["users"]:
-                # Администраторы неприкосновенны в любом случае: удалить
-                # последнего значит запереть систему снаружи.
                 doomed = User.objects.exclude(role="admin").exclude(is_superuser=True)
                 names = list(doomed.values_list("username", flat=True))
                 doomed.delete()
                 self.stdout.write(f"  сотрудники               удалено {len(names)}"
                                   + (f" ({', '.join(names)})" if names else ""))
 
-            if not User.objects.filter(is_superuser=True).exists():
+            if not User.objects.filter(role="admin", is_active=True).exists() \
+                    and not User.objects.filter(is_superuser=True).exists():
                 raise CommandError("Отменено: не осталось ни одного администратора.")
 
-            # чистый стандартный маршрут вместо накопившихся правок
             ensure_default_stages()
 
-            # и в самом конце — журнал, куда всё вышеперечисленное только что записалось
             for model in (Notification, AuditLog):
                 n, _ = model.objects.all().delete()
                 self.stdout.write(f"  {model.__name__:24} удалено {n}")
 
         self.stdout.write(self.style.SUCCESS(
-            "Готово. Настройки себестоимости и учётная запись администратора "
-            "сохранены, справочник этапов сброшен к стандартным пяти."))
+            "Готово. Учётные записи администраторов сохранены, этапы цеха сброшены к стандартным."))

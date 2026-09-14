@@ -1,16 +1,12 @@
 import axios from 'axios'
 
-// Бесплатный Render засыпает после 15 минут простоя, и первый запрос к
-// просыпающемуся сервису часто отваливается по таймауту или 502/503.
-// Раньше такие сбои приводили к пустой странице, поэтому здесь —
-// ограниченное ожидание и автоповтор.
+// Ограниченное ожидание и автоповтор: первый запрос к только что
+// перезапущенному серверу иногда отваливается по таймауту или 502/503.
 export const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
 const MAX_RETRIES = 3
 const RETRY_STATUSES = [502, 503, 504]
 
-// Сбой, который имеет смысл повторить: сеть недоступна, истёк таймаут
-// или шлюз ещё не поднял приложение. Ошибки 4xx повторять бессмысленно.
 const isTransient = (error) => {
   if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') return true
   if (!error.response) return true
@@ -27,8 +23,6 @@ api.interceptors.response.use(
   (r) => r,
   async (error) => {
     const original = error.config
-
-    // Повтор с нарастающей паузой: 0.8с, 1.6с, 3.2с
     if (original && isTransient(error)) {
       original._retryCount = (original._retryCount || 0) + 1
       if (original._retryCount <= MAX_RETRIES) {
@@ -37,7 +31,6 @@ api.interceptors.response.use(
         return api(original)
       }
     }
-
     if (error.response?.status === 401 && !original._retry && localStorage.getItem('refresh')) {
       original._retry = true
       try {
@@ -55,15 +48,12 @@ api.interceptors.response.use(
   }
 )
 
-// Права приходят из /me/ по всем ключам: и разделам («warehouse»), и их
-// частям («warehouse.batches»). Точечное правило уже учтено на сервере —
-// здесь только читаем итог.
+// Права приходят из /me/ по всем ключам: разделам («warehouse») и их частям
+// («warehouse.receipts»). Точечные правила уже учтены на сервере.
 export const can = (user, key) => !!user?.perms?.[key]?.read
 export const canEdit = (user, key) => !!user?.perms?.[key]?.write
 
-// Виден ли раздел вообще: сам раздел или хотя бы одна его часть.
-// Нужно для меню и вкладок — человеку могли выдать одну вкладку склада,
-// не открывая склад целиком.
+// Виден ли раздел: сам раздел или хотя бы одна его часть
 export const canAny = (user, section) => {
   const perms = user?.perms
   if (!perms) return false
@@ -74,6 +64,21 @@ export const canAny = (user, section) => {
 
 export const fmt = (n) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })
 export const fmtD = (n) => Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+// Деньги, которых человеку не показывают, приходят как null
+export const money = (n) => (n === null || n === undefined ? '—' : fmt(n))
+
+// Дата в поле ввода — по местному времени: toISOString даёт UTC,
+// и в Алматы после полуночи до пяти утра подставлялось бы вчера.
+export const today = () => {
+  const d = new Date()
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 10)
+}
+export const dm = (s) => (s ? `${String(s).slice(8, 10)}.${String(s).slice(5, 7)}` : '')
+export const dmy = (s) => (s ? `${String(s).slice(8, 10)}.${String(s).slice(5, 7)}.${String(s).slice(0, 4)}` : '')
+
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+export const monthLabel = (m) => (!m || m === 'none' ? 'без даты' : `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`)
 
 export const CONTRACT_STATUS = {
   new: { label: 'Новый', color: '#8892a6' },
@@ -83,36 +88,43 @@ export const CONTRACT_STATUS = {
   cancelled: { label: 'Отменён', color: '#b03030' },
 }
 
+export const EXPENSE_KINDS = [
+  ['delivery', 'Доставка'], ['travel', 'Командировки'], ['samples', 'Образцы и лекала'],
+  ['fabric', 'Ткань и материалы'], ['accessories', 'Фурнитура и шевроны'],
+  ['sewing', 'Пошив, крой, вышивка'], ['packaging', 'Упаковка'], ['purchase', 'Закуп товара'],
+  ['percent', 'Проценты и сертификаты'], ['legal', 'Пени, суды, документы'], ['other', 'Прочее'],
+]
+
+export const STAGE_KINDS = {
+  cut: 'Крой — штуки и расход ткани',
+  count: 'Штуки по размерам',
+  sewing: 'Пошив — партии бригад, готовность по дням',
+}
+
 // Имена полей, как их называет пользователь, а не как они зовутся в базе
 const FIELD_NAMES = {
-  number: 'Номер', name: 'Наименование', sku: 'Артикул', title: 'Название',
+  number: 'Номер', name: 'Наименование', sku: 'Артикул', title: 'Предмет закупки',
   amount: 'Сумма', qty: 'Количество', price: 'Цена', unit_price: 'Цена за единицу',
   customer: 'Заказчик', product: 'Изделие', material: 'Материал', supplier: 'Поставщик',
-  deadline: 'Срок', signed_date: 'Дата подписания', due_date: 'Срок платежа',
-  date: 'Дата', category: 'Категория', monthly_amount: 'Сумма в месяц',
-  base_price: 'Цена продажи', labor_cost: 'Оплата труда', norm_hours: 'Норма времени',
-  min_stock: 'Минимальный остаток', code: 'Код', position: 'Порядок',
-  username: 'Логин', password: 'Пароль', role: 'Роль', template: 'Этап',
-  overhead_cost: 'Накладные на 1 шт.', default_norm_hours: 'Норма часов',
-  planned_monthly_hours: 'Плановый фонд времени', planned_monthly_units: 'Плановый выпуск',
-  monthly_amount_total: 'Сумма в месяц', batch_no: 'Номер партии',
-  received_at: 'Дата приёмки', direction: 'Тип операции', status: 'Статус',
-  unit: 'Единица измерения', bin_iin: 'БИН/ИИН', phone: 'Телефон',
-  contract: 'Договор', description: 'Описание', note: 'Примечание',
-  first_name: 'Имя', is_active: 'Активен', method: 'Метод распределения',
-  product: 'Изделие', client: 'Для кого', sizes_text: 'Размеры', sewing_rate: 'Расценка',
-  brigade: 'Бригада', ready: 'Готовность', meters: 'Метраж', leader: 'Бригадир',
-  people: 'Людей в бригаде', size: 'Размер', planned: 'План', kind: 'Вид', started: 'Дата выдачи',
-  purchase_no: 'Номер закупки', own_company: 'Фирма', platform: 'Площадка',
-  contract_no: 'Номер договора', investor: 'Инвестор', delivery_place: 'Место поставки',
-  delivery_terms: 'Срок поставки', planned_execution: 'Планируемый срок', comment: 'Комментарий',
-  project: 'Проект', category: 'Статья', month: 'Месяц',
+  deadline: 'Срок', signed_date: 'Дата подписания', date: 'Дата', category: 'Статья',
+  min_stock: 'Минимальный остаток', position: 'Порядок', username: 'Логин', password: 'Пароль',
+  role: 'Роль', batch_no: 'Номер партии', received_at: 'Дата приёмки', status: 'Статус',
+  unit: 'Единица измерения', bin_iin: 'БИН/ИИН', phone: 'Телефон', contract: 'Договор',
+  note: 'Примечание', first_name: 'Имя', is_active: 'Активен', client: 'Для кого',
+  sizes_text: 'Размеры', sewing_rate: 'Расценка', brigade: 'Бригада', ready: 'Готовность',
+  meters: 'Метраж', leader: 'Бригадир', people: 'Людей в бригаде', size: 'Размер', planned: 'План',
+  kind: 'Вид', started: 'Дата выдачи', purchase_no: 'Номер закупки', own_company: 'Фирма',
+  platform: 'Площадка', contract_no: 'Номер договора', investor: 'Инвестор',
+  delivery_place: 'Место поставки', delivery_terms: 'Срок поставки',
+  planned_execution: 'Планируемый срок', comment: 'Комментарий', month: 'Месяц',
+  stage: 'Этап', template_ids: 'Этапы', extra: 'Доп. колонка', extra_label: 'Доп. колонка',
+  materials: 'Расход ткани', monthly_plan: 'План в месяц', work_order: 'Заказ цеха',
+  reason: 'Операция', customer_name: 'Заказчик', item_name: 'Товар',
 }
 
 /**
  * Человеческий текст ошибки вместо сырого JSON.
- * DRF отдаёт либо {"detail": "..."} , либо словарь по полям
- * {"sku": ["Уже существует."]} — второе показывать как есть нельзя.
+ * DRF отдаёт либо {"detail": "..."}, либо словарь по полям.
  */
 export function apiError(e, fallback = 'Не удалось выполнить действие') {
   if (e?.code === 'ECONNABORTED') return 'Сервер долго не отвечает. Попробуйте ещё раз.'
@@ -120,12 +132,21 @@ export function apiError(e, fallback = 'Не удалось выполнить �
   if (!d) return e?.message === 'Network Error'
     ? 'Нет связи с сервером. Проверьте подключение и повторите.'
     : fallback
-  if (typeof d === 'string') return d
+  if (typeof d === 'string') return d.length > 300 ? fallback : d
   if (d.detail) return d.detail
   const lines = []
   for (const [field, val] of Object.entries(d)) {
-    const text = Array.isArray(val) ? val.join(' ') : String(val)
+    const text = Array.isArray(val) ? val.map(v => (typeof v === 'object' ? JSON.stringify(v) : v)).join(' ') : String(val)
     lines.push(field === 'non_field_errors' ? text : `${FIELD_NAMES[field] || field}: ${text}`)
   }
   return lines.length ? lines.join('\n') : fallback
+}
+
+// Скачать файл, который сервер отдаёт по API (выгрузки в Excel)
+export async function download(url, filename) {
+  const r = await api.get(url, { responseType: 'blob' })
+  const href = URL.createObjectURL(r.data)
+  const a = document.createElement('a')
+  a.href = href; a.download = filename; a.click()
+  setTimeout(() => URL.revokeObjectURL(href), 1000)
 }

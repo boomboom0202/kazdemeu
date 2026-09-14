@@ -56,7 +56,6 @@ INSTALLED_APPS = [
     "tenders",
     "assistant",
     "workshop",
-    "projects",
 ]
 
 MIDDLEWARE = [
