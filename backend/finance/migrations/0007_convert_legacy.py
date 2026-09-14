@@ -34,6 +34,12 @@ def forwards(apps, schema_editor):
                                         month=e.date.replace(day=1), source="manual",
                                         position=positions[cat.id])
         else:
+            # «Оплата по графику» создавалась автоматически при отметке оплаты.
+            # Без договора она остаётся, только если сам договор удалили, — это
+            # не деньги предприятия, а след удалённого договора (на боевой базе —
+            # тестовые «Test» и 17236026-1). В прочие поступления её не переносим.
+            if desc.startswith("Оплата по графику"):
+                continue
             label = desc or (e.category.name if e.category_id else "Поступление")
             OtherIncome.objects.create(date=e.date, amount=e.amount, comment=label[:255])
 
