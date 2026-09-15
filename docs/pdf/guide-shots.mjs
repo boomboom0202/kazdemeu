@@ -87,7 +87,8 @@ await part('.card:has(h2:text-is("Куда ушли деньги"))', '06-kuda-u
 await p.click('.tabs button:has-text("Оплаты")'); await settle(); await part('.card:has(table.sheet)', '07-oplaty')
 await p.click('.tabs button:has-text("Цех")'); await settle();
 await p.click('button:has-text("Запустить в цех")'); await settle();
-await p.fill('textarea', '54/176 - 27 шт\n54/182 - 35 шт\n58/182 - 29\n56-58/170-176 116');
+await p.fill('textarea', '54/176 - 27 шт\n54-182 - 35 шт\n58.182 - 29\n56-58/170-176 116');
+await p.waitForSelector('.sizecheck table'); await settle();
 await part('.card.stitch:has(h2:text-is("Запустить в цех"))', '08-zapusk-v-ceh')
 await p.click('button:has-text("Отмена")'); await settle();
 await part('.card:has(.toolbar b:text-is("Заказы цеха по договору"))', '09-ceh-po-dogovoru')
