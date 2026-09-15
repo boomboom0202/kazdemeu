@@ -37,7 +37,7 @@ body { background: var(--paper); color: var(--ink); font-size: 14px; }
 
 /* min-width: 0 — иначе широкая таблица (реестр, матрица по месяцам) растягивает
    всю страницу вправо, и прокрутка внутри .tablewrap не включается */
-.main { flex: 1; min-width: 0; padding: 22px 28px 60px; max-width: 1280px; }
+.main { flex: 1; min-width: 0; padding: 22px 28px 60px; }
 .pagehead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
 h1 { font-size: 21px; font-weight: 800; }
 h2 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
@@ -333,7 +333,12 @@ td.over, .over { color: var(--red); font-weight: 700; }
 .matrix td.cell:hover { background: #f6f7fb; }
 .matrix td.sel { background: #eef1f8; font-weight: 700; }
 .kindbar { height: 6px; border-radius: 4px; background: var(--indigo); opacity: .7; margin-top: 3px; }
-.tablewrap { overflow-x: auto; }
+/* Таблица прокручивается в своём окне не выше экрана: полоса прокрутки вбок
+   всегда видна — не нужно листать страницу до конца таблицы, чтобы увидеть
+   правые колонки. Заголовки колонок при этом остаются на месте. */
+.tablewrap { overflow: auto; max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); }
+.tablewrap > table > thead th { position: sticky; top: 0; z-index: 3; background: var(--card);
+  border-bottom: none; box-shadow: inset 0 -2px 0 var(--line); }
 
 /* ── Цех: вкладки-листы, карточки этапов, полоски по этапам ─────────── */
 .tabs a, .linktabs a { padding: 8px 14px; font-weight: 700; color: var(--ink-soft); text-decoration: none;

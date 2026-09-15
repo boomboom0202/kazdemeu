@@ -148,7 +148,7 @@ export default function OrderCard({ user, onChange }) {
             })}>Добавить</button>
             <span className="muted" style={{ marginLeft: 10 }}>Если размер уже есть — у него обновится план.</span>
           </div>
-          {o.sizes.length > 0 && <table>
+          {o.sizes.length > 0 && <div className="tablewrap"><table>
             <thead><tr><th>Размер</th><th className="num">План, шт</th><th /></tr></thead>
             <tbody>
               {o.sizes.map(z => (
@@ -160,7 +160,7 @@ export default function OrderCard({ user, onChange }) {
                 </tr>
               ))}
             </tbody>
-          </table>}
+          </table></div>}
         </div>
       )}
 
@@ -179,7 +179,7 @@ export default function OrderCard({ user, onChange }) {
 
       {tab === 'brigades' && (
         <div className="card" style={{ padding: 0 }}>
-          <table>
+          <div className="tablewrap"><table>
             <thead><tr><th>Бригада</th><th className="num">Выдано</th><th className="num">Сшито</th><th className="num">Начислено, ₸</th></tr></thead>
             <tbody>
               {o.brigades.length === 0 && <tr><td colSpan={4} className="muted">Пока никому не выдавали.</td></tr>}
@@ -190,13 +190,13 @@ export default function OrderCard({ user, onChange }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {tab === 'fabric' && (
         <div className="card" style={{ padding: 0 }}>
-          <table>
+          <div className="tablewrap"><table>
             <thead><tr><th>Материал</th><th className="num">Метров</th><th className="num">Скроено, шт</th><th className="num">м/шт</th></tr></thead>
             <tbody>
               {o.materials.length === 0 && <tr><td colSpan={4} className="muted">Метраж в крое не вносили.</td></tr>}
@@ -205,7 +205,7 @@ export default function OrderCard({ user, onChange }) {
                   <td className="num">{m.cut_qty}</td><td className="num">{fmtD(m.per_unit)}</td></tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

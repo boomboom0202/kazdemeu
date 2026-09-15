@@ -177,8 +177,8 @@ export default function Tenders({ user }) {
         </select>
       </div>
 
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        <table>
+      <div className="card" style={{ padding: 0 }}>
+        <div className="tablewrap"><table>
           <thead><tr>
             <th>Площадка</th><th>Закупка</th><th>Заказчик</th><th>Товар</th>
             <th className="num">Кол-во</th><th className="num">Цена зак.</th>
@@ -222,7 +222,7 @@ export default function Tenders({ user }) {
             {rows.length === 0 && <tr><td colSpan={13} className="muted" style={{ padding: 16 }}>
               Лотов нет. Добавьте вручную или загрузите свой файл «план закупок» кнопкой «Импорт из Excel».</td></tr>}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   )

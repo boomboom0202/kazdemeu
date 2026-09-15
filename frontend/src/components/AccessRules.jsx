@@ -123,7 +123,7 @@ export default function AccessRules({ users }) {
       {userId && keys.map(sec => (
         <div className="card" style={{ padding: 0 }} key={sec.section}>
           <div style={{ padding: '13px 16px 0' }}><h2>{sec.title}</h2></div>
-          <table>
+          <div className="tablewrap"><table>
             <thead>
               <tr>
                 <th>Раздел и его части</th>
@@ -136,7 +136,7 @@ export default function AccessRules({ users }) {
               {row(sec.section, 'Весь раздел', false)}
               {sec.areas.map(a => row(a.key, a.title, true))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       ))}
     </>

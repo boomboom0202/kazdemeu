@@ -36,7 +36,7 @@ export default function StageSettings({ user, onChange }) {
     <div className={ro ? 'readonly' : ''}>
       {ro && <div className="ro-note"><b>Только просмотр.</b>&nbsp;Этапы настраивает технолог цеха.</div>}
       <div className="card" style={{ padding: 0 }}>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr><th>Порядок</th><th>Этап</th><th>Вид листа</th><th>Доп. колонка</th><th>В новых заказах</th><th className="num">Заказов</th><th /></tr></thead>
           <tbody>
             {rows.map((t, i) => (
@@ -57,7 +57,7 @@ export default function StageSettings({ user, onChange }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
       <div className="card stitch">
         <h2>Новый этап</h2>

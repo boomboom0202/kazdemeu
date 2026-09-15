@@ -366,7 +366,7 @@ function OtherIncome({ canWrite }) {
             onClick={() => run(async () => { await api.post('/other-income/', form); setForm({ ...form, amount: '', comment: '' }) })}>Добавить</button></div>
         </div>
       </div>}
-      <table className="sheet">
+      <div className="tablewrap"><table className="sheet">
         <thead><tr><th>Дата</th><th className="num">Сумма</th><th>Комментарий</th><th /></tr></thead>
         <tbody>
           {rows.length === 0 && <tr><td colSpan={4} className="muted">Записей нет.</td></tr>}
@@ -375,7 +375,7 @@ function OtherIncome({ canWrite }) {
               <td>{canWrite && <button className="btn small ghost" onClick={() => confirm('Удалить запись?') && run(() => api.delete(`/other-income/${r.id}/`))}>✕</button>}</td></tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   )
 }

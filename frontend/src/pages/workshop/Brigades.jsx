@@ -36,7 +36,7 @@ export default function Brigades({ user }) {
         <p className="muted">В отчёте цеха пишут «Наср + 9 бала» — бригадир и девять человек с ним.</p>
       </div>
       <div className="card" style={{ padding: 0 }}>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr>
             <th>Бригада</th><th className="num">Партий в работе</th><th className="num">Шьётся, шт</th>
             <th className="num">Сшито всего</th><th className="num">Начислено, ₸</th><th>Работает</th><th />
@@ -57,7 +57,7 @@ export default function Brigades({ user }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   )

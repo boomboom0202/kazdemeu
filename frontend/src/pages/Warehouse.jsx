@@ -87,7 +87,7 @@ function Materials({ materials, suppliers, reload }) {
         </div>
       )}
       <div className="card" style={{ padding: 0 }}>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr><th>Материал</th><th className="num">Остаток</th><th className="num">Мин.</th><th className="num">Ср. цена</th><th>Поставщик</th><th /><th /></tr></thead>
           <tbody>
             {materials.length === 0 && <tr><td colSpan={7} className="muted">Материалов нет.</td></tr>}
@@ -107,7 +107,7 @@ function Materials({ materials, suppliers, reload }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </>
   )
@@ -146,7 +146,7 @@ function Receipts({ materials, suppliers, reload }) {
         <p className="muted">Деньги за ткань пишутся расходом в договор, под который её купили. Здесь — сколько пришло на склад.</p>
       </div>
       <div className="card" style={{ padding: 0 }}>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr><th>Дата</th><th>Материал</th><th>Поставщик</th><th className="num">Кол-во</th><th className="num">Цена</th><th>Партия</th><th /></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={7} className="muted">Приходов нет.</td></tr>}
@@ -161,7 +161,7 @@ function Receipts({ materials, suppliers, reload }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </>
   )
@@ -220,7 +220,7 @@ function Issues({ materials, orders, reload }) {
             <option value="">Все материалы</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr><th>Когда</th><th>Материал</th><th className="num">Движение</th><th>Операция</th><th>Заказ цеха</th><th>Примечание</th><th>Кто</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={7} className="muted">Движений нет.</td></tr>}
@@ -236,7 +236,7 @@ function Issues({ materials, orders, reload }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </>
   )
@@ -365,7 +365,7 @@ function Suppliers({ suppliers, reload }) {
         </div>
       </div>
       <div className="card" style={{ padding: 0 }}>
-        <table>
+        <div className="tablewrap"><table>
           <thead><tr><th>Название</th><th>Телефон</th><th>Email</th><th>БИН/ИИН</th><th /></tr></thead>
           <tbody>
             {suppliers.length === 0 && <tr><td colSpan={5} className="muted">Поставщиков нет.</td></tr>}
@@ -378,7 +378,7 @@ function Suppliers({ suppliers, reload }) {
                 </td></tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </>
   )

@@ -75,7 +75,7 @@ export default function Admin() {
             <p className="muted">Роль задаёт доступ по умолчанию: менеджер ведёт тендеры и договоры, бухгалтер — оплаты, расходы и финансы, технолог — цех, сотрудник цеха вносит записи этапов, кладовщик — склад. Технолог и «только просмотр» видят договоры без денег. Уточнить права конкретному человеку — во вкладке «Точечные права».</p>
           </div>
           <div className="card" style={{ padding: 0 }}>
-            <table>
+            <div className="tablewrap"><table>
               <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Активен</th><th /></tr></thead>
               <tbody>
                 {users.map(u => (
@@ -94,7 +94,7 @@ export default function Admin() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </>
       )}
@@ -103,7 +103,7 @@ export default function Admin() {
 
       {tab === 'log' && (
         <div className="card" style={{ padding: 0 }}>
-          <table>
+          <div className="tablewrap"><table>
             <thead><tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Объект</th></tr></thead>
             <tbody>
               {log.map(l => (
@@ -115,7 +115,7 @@ export default function Admin() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

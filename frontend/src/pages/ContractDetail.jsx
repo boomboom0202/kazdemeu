@@ -196,7 +196,7 @@ function Payments({ c, canWrite, run }) {
         <div><label className="f">Дата поступления</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
         <div style={{ alignSelf: 'flex-end', flex: '0 0 auto' }}><button className="btn" onClick={add} disabled={!form.amount}>Добавить</button></div>
       </div></div>}
-      <table className="sheet">
+      <div className="tablewrap"><table className="sheet">
         <thead><tr><th>Дата</th><th className="num">Сумма</th><th>Комментарий</th><th /></tr></thead>
         <tbody>
           {c.payments.length === 0 && <tr><td colSpan={4} className="muted">Оплат пока не было.</td></tr>}
@@ -210,7 +210,7 @@ function Payments({ c, canWrite, run }) {
           ))}
           <tr className="total"><td>Итого</td><td className="num">{money(c.money.paid)}</td><td colSpan={2}>из {fmt(c.amount)} · долг {money(c.money.debt)}</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
   )
 }
@@ -295,7 +295,7 @@ function Files({ c, canWrite, run }) {
   })
   return (
     <div className="card">
-      <table>
+      <div className="tablewrap"><table>
         <thead><tr><th>Тип</th><th>Название</th><th>Ссылка</th><th>Кто загрузил</th><th>Когда</th><th /></tr></thead>
         <tbody>
           {c.files.length === 0 && <tr><td colSpan={6} className="muted">Файлов нет.</td></tr>}
@@ -310,7 +310,7 @@ function Files({ c, canWrite, run }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {canWrite && <div className="formrow" style={{ marginTop: 12 }}>
         <div><label className="f">Тип</label>
           <select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>
