@@ -205,6 +205,21 @@ class WorkOrderViewSet(Base):
         order = self.get_queryset().get(pk=order.pk)
         return WorkOrderDetailSerializer(order, context=self.get_serializer_context()).data
 
+    @action(detail=False, methods=["post"])
+    def check_sizes(self, request):
+        """Проверка размеров до записи: как каждая строка запишется в заказ и что в ней не так.
+        order — id заказа, если размеры добавляются к уже заведённым."""
+        from .sizes import normalize_size, size_sort_key
+        rows, errors = parse_sizes(request.data.get("text", ""))
+        existing = set()
+        if request.data.get("order"):
+            for s in WorkSize.objects.filter(order_id=request.data["order"]):
+                canon, err = normalize_size(s.size)
+                existing.add(s.size if err else canon)
+        rows.sort(key=lambda r: size_sort_key(r[0]))
+        return Response({"rows": [{"size": s, "qty": q, "exists": s in existing} for s, q in rows],
+                         "errors": errors, "total": sum(q for _, q in rows)})
+
     @action(detail=True, methods=["post"])
     def sizes_bulk(self, request, pk=None):
         """Добавить размеры столбиком. Всё или ничего."""

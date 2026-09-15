@@ -84,6 +84,12 @@ class GoodsMovementSerializer(serializers.ModelSerializer):
                 attrs["contract"] = order.contract
         if not (attrs.get("product") or "").strip():
             raise serializers.ValidationError({"product": "Укажите изделие."})
+        if (attrs.get("size") or "").strip():
+            from workshop.sizes import normalize_size
+            size, err = normalize_size(attrs["size"])
+            if err:
+                raise serializers.ValidationError({"size": err})
+            attrs["size"] = size
         if attrs["kind"] == GoodsMovement.Kind.OUT:
             have = line_stock(attrs.get("work_order"), attrs["product"], attrs.get("size", ""))
             if attrs["qty"] > have:

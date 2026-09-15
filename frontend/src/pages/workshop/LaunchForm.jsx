@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { api, apiError, fmt, can } from '../../api'
-
-const SIZE_LINE = /^(.*\S)\s+[-–—:]?\s*(\d+)\s*(?:шт\.?|ш|комп\.?|компл\.?|пар)?\s*$/i
+import React, { useEffect, useState } from 'react'
+import { api, apiError, can } from '../../api'
+import SizesInput from '../../components/SizesInput'
 
 /**
- * Запуск в цех: изделие, размеры столбиком, какие этапы проходит заказ.
+ * Запуск в цех: изделие, размеры по сетке, какие этапы проходит заказ.
  * Из договора подставляются предмет, срок и количество — чтобы сверить,
  * что сетка размеров сходится с договором.
  */
@@ -16,6 +15,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
     deadline: contract?.deadline || '', sewing_rate: '', sizes_text: '',
   })
   const [chosen, setChosen] = useState([])
+  const [sizesOk, setSizesOk] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -27,11 +27,6 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
     if (!contract && can(user, 'contracts.contracts'))
       api.get('/contracts/?page_size=5000&status__in=new,negotiation,in_progress').then(r => setContracts(r.data.results || []))
   }, [])
-
-  const sizesTotal = useMemo(() => form.sizes_text.split('\n').reduce((a, l) => {
-    const m = l.trim().match(SIZE_LINE)
-    return a + (m ? Number(m[2]) : 0)
-  }, 0), [form.sizes_text])
 
   const picked = contract || contracts.find(c => String(c.id) === String(form.contract))
   const contractQty = picked?.qty ? Number(picked.qty) : null
@@ -72,31 +67,25 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
         <div><label className="f">Расценка пошива, ₸/шт</label>
           <input type="number" value={form.sewing_rate} placeholder="3000" onChange={e => setForm({ ...form, sewing_rate: e.target.value })} /></div>
       </div>
-      <div className="formrow">
-        <div style={{ flex: 2 }}>
-          <label className="f">Размеры — столбиком, как в отчёте цеха</label>
-          <textarea rows={7} value={form.sizes_text} placeholder={'54/176 - 27 шт\n54/182 - 35 шт\n56-58/170-176 116'}
-            onChange={e => setForm({ ...form, sizes_text: e.target.value })} />
-          <div className="muted" style={{ marginTop: 4 }}>
-            По размерам: <b>{fmt(sizesTotal)}</b> шт
-            {contractQty !== null && <> из {fmt(contractQty)} по договору
-              {sizesTotal !== contractQty && sizesTotal > 0 && <span className="neg"> — не сходится на {fmt(Math.abs(contractQty - sizesTotal))}</span>}</>}
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label className="f">Этапы заказа</label>
+
+      <SizesInput value={form.sizes_text} onChange={v => setForm(f => ({ ...f, sizes_text: v }))}
+        contractQty={contractQty} onValidity={ok => setSizesOk(ok)} />
+
+      <div style={{ margin: '12px 0 4px' }}>
+        <label className="f">Этапы заказа</label>
+        <div className="chips">
           {templates.map(t => (
-            <label key={t.id} className="check">
+            <label key={t.id} className="check" style={{ marginRight: 12 }}>
               <input type="checkbox" checked={chosen.includes(t.id)}
                 onChange={e => setChosen(e.target.checked ? [...chosen, t.id] : chosen.filter(x => x !== t.id))} />
               {t.name}
             </label>
           ))}
-          <div className="muted" style={{ marginTop: 4 }}>Порядок этапов — из настроек цеха. Нет вышивки — снимите галочку.</div>
         </div>
+        <div className="muted">Порядок этапов — из настроек цеха. Нет вышивки — снимите галочку.</div>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn" onClick={submit} disabled={busy || !form.product || !chosen.length}>Создать заказ цеха</button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button className="btn" onClick={submit} disabled={busy || !form.product || !chosen.length || !sizesOk}>Создать заказ цеха</button>
         {onCancel && <button className="btn ghost" onClick={onCancel}>Отмена</button>}
       </div>
     </div>

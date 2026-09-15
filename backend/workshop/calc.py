@@ -99,14 +99,16 @@ def free_capacity(size, stage, exclude_entry=None):
 
 
 # Размеры вставляют столбиком, как пишут в отчёте цеха: «54/176 - 27 шт».
-# Количество — последнее число строки после пробела; всё до него — размер.
-# Сам размер может содержать и дефисы, и цифры: «56-58/170-176 116шт».
-SIZE_LINE = re.compile(r"^(.*\S)\s+[-–—:]?\s*(\d+)\s*(?:шт\.?|ш|комп\.?|компл\.?|пар)?\s*$",
-                       re.IGNORECASE)
+# Количество — последнее число строки; всё до него — размер. Размер
+# приводится к одному написанию по размерной сетке (см. sizes.py).
+SIZE_LINE = re.compile(r"^(?P<size>.*?\S)\s+(?P<sep>[-–—:]\s*)?(?P<qty>\d+)\s*"
+                       r"(?P<unit>шт\.?|ш|комп\.?|компл\.?|пар)?\s*$", re.IGNORECASE)
 
 
 def parse_sizes(text):
-    rows, errors, seen = [], [], set()
+    """[(размер, план)] и ошибки по строкам. Размеры — уже одним написанием."""
+    from .sizes import normalize_size, is_height, LETTERS, ONE_SIZE
+    rows, errors, seen = [], [], {}
     for n, raw in enumerate((text or "").splitlines(), start=1):
         line = raw.strip()
         if not line:
@@ -114,39 +116,67 @@ def parse_sizes(text):
         m = SIZE_LINE.match(line)
         if not m:
             errors.append(f"строка {n}: «{line}» — не вижу количества. "
-                          "Пишите размер и через пробел число: «54/176 - 27».")
+                          "Пишите размер и через пробел количество: «54/176 - 27».")
             continue
-        size = m.group(1).strip().rstrip("-–—:").strip()
-        qty = int(m.group(2))
-        if not size:
-            errors.append(f"строка {n}: «{line}» — не вижу размера.")
-        elif qty < 1:
+        size, err = normalize_size(m.group("size").strip().rstrip("-–—:").strip())
+        qty = int(m.group("qty"))
+        if err:
+            errors.append(f"строка {n}: {err}" + ("" if err[-1] in ".?!" else "."))
+            continue
+        # «54 176» без тире и «шт»: это размер 54/176 без количества или 176 штук 54-го?
+        if (not m.group("sep") and not m.group("unit") and "/" not in size
+                and size not in LETTERS and size != ONE_SIZE and is_height(qty)):
+            errors.append(f"строка {n}: «{line}» — это размер {size}/{qty} без количества "
+                          f"или {qty} шт размера {size}? Напишите «{size}/{qty} - 27» или «{size} - {qty} шт».")
+            continue
+        if qty < 1:
             errors.append(f"строка {n}: «{line}» — количество должно быть больше нуля.")
         elif size in seen:
-            errors.append(f"строка {n}: размер {size} уже есть выше.")
+            errors.append(f"строка {n}: размер {size} уже есть в строке {seen[size]}.")
         else:
-            seen.add(size)
+            seen[size] = n
             rows.append((size, qty))
     return rows, errors
 
 
-def apply_sizes(order, rows):
-    """Добавить размеры в заказ. Если размер уже есть — обновить его план."""
+def resort_sizes(order):
+    """Строки сетки по порядку: размер, внутри — рост."""
     from .models import WorkSize
-    existing = {s.size: s for s in order.sizes.all()}
-    position = max((s.position for s in existing.values()), default=-1) + 1
+    from .sizes import size_sort_key
+    sizes = sorted(WorkSize.objects.filter(order=order), key=lambda s: size_sort_key(s.size))
+    for pos, s in enumerate(sizes):
+        if s.position != pos:
+            s.position = pos
+            s.save(update_fields=["position"])
+
+
+def apply_sizes(order, rows):
+    """Добавить размеры в заказ. Если размер уже есть — обновить его план.
+    Размер, записанный раньше по-другому («54-188»), узнаётся как тот же."""
+    from .models import WorkSize
+    from .sizes import normalize_size
+    existing = {}
+    for s in WorkSize.objects.filter(order=order):
+        canon, err = normalize_size(s.size)
+        existing.setdefault(s.size if err else canon, s)
     added = updated = 0
     for size, qty in rows:
-        if size in existing:
-            obj = existing[size]
+        obj = existing.get(size)
+        if obj:
+            fields = []
             if obj.planned != qty:
                 obj.planned = qty
-                obj.save(update_fields=["planned"])
+                fields.append("planned")
+            if obj.size != size and not WorkSize.objects.filter(order=order, size=size).exists():
+                obj.size = size
+                fields.append("size")
+            if fields:
+                obj.save(update_fields=fields)
             updated += 1
         else:
-            WorkSize.objects.create(order=order, size=size, planned=qty, position=position)
-            position += 1
+            existing[size] = WorkSize.objects.create(order=order, size=size, planned=qty, position=0)
             added += 1
+    resort_sizes(order)
     return added, updated
 
 

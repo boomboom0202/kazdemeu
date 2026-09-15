@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fmt, fmtD, apiError, can, canEdit, dm, dmy } from '../../api'
 import { Loader, LoadError } from '../../components/Loader'
 import StageBars from '../../components/StageBars'
+import SizesInput from '../../components/SizesInput'
 
 /**
  * Заказ цеха. Главное — таблица «размер × этап»: по каждому размеру видно,
@@ -18,6 +19,7 @@ export default function OrderCard({ user, onChange }) {
   const [open, setOpen] = useState(null)
   const [tab, setTab] = useState('sizes')
   const [sizesText, setSizesText] = useState('')
+  const [sizesOk, setSizesOk] = useState(false)
   const [templates, setTemplates] = useState([])
 
   const load = () => {
@@ -139,10 +141,10 @@ export default function OrderCard({ user, onChange }) {
 
       {tab === 'sizes' && mayEdit && (
         <div className="card">
-          <label className="f">Добавить размеры — столбиком, как в отчёте цеха</label>
-          <textarea rows={4} value={sizesText} placeholder={'54/176 - 27 шт\n58/182 29'} onChange={e => setSizesText(e.target.value)} />
+          <SizesInput value={sizesText} onChange={setSizesText} orderId={o.id} rows={5}
+            onValidity={(ok, n) => setSizesOk(ok && n > 0)} />
           <div style={{ margin: '10px 0 14px' }}>
-            <button className="btn" disabled={!sizesText.trim()} onClick={() => run(async () => {
+            <button className="btn" disabled={!sizesOk} onClick={() => run(async () => {
               const { data } = await api.post(`/work-orders/${id}/sizes_bulk/`, { text: sizesText })
               setSizesText(''); alert(`Размеры: добавлено ${data.report.added}, обновлено ${data.report.updated}.`)
             })}>Добавить</button>

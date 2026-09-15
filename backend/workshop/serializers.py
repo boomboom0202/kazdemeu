@@ -70,6 +70,20 @@ class WorkSizeSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkSize
         fields = "__all__"
+        read_only_fields = ["position"]
+
+    def validate_size(self, value):
+        from .sizes import normalize_size
+        size, err = normalize_size(value)
+        if err:
+            raise serializers.ValidationError(err)
+        return size
+
+    def save(self, **kwargs):
+        from .calc import resort_sizes
+        obj = super().save(**kwargs)
+        resort_sizes(obj.order)
+        return obj
 
 
 class WorkOrderSerializer(serializers.ModelSerializer):

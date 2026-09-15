@@ -309,7 +309,7 @@ function Goods({ user }) {
           <p className="muted" style={{ marginBottom: 8 }}>Для того, что уже лежало на складе до перехода на систему. Выпуск цеха вносить не нужно — он появляется сам.</p>
           <div className="formrow">
             <div style={{ flex: 2 }}><label className="f">Изделие</label><input value={inForm.product} onChange={e => setInForm({ ...inForm, product: e.target.value })} /></div>
-            <div><label className="f">Размер</label><input value={inForm.size} onChange={e => setInForm({ ...inForm, size: e.target.value })} /></div>
+            <div><label className="f">Размер</label><input value={inForm.size} placeholder="54/176, XL" title="Размер/рост по сетке: 54/176, 56-58/170-176, 50, XL — или пусто" onChange={e => setInForm({ ...inForm, size: e.target.value })} /></div>
             <div><label className="f">Штук</label><input type="number" value={inForm.qty} onChange={e => setInForm({ ...inForm, qty: e.target.value })} /></div>
           </div>
           <button className="btn" disabled={!inForm.product || !inForm.qty} onClick={() => run(async () => {
