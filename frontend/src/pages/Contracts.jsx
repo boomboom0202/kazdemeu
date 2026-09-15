@@ -30,7 +30,6 @@ export default function Contracts({ user }) {
   const [showCust, setShowCust] = useState(false)
   const [editCustId, setEditCustId] = useState(null)
   const [custForm, setCustForm] = useState({ name: '', phone: '', bin_iin: '', contact_person: '' })
-  const [carryOver, setCarryOver] = useState(false)
   const [expImport, setExpImport] = useState(false)
   const fileRef = useRef()
 
@@ -86,7 +85,6 @@ export default function Contracts({ user }) {
   const importExcel = async (e) => {
     const f = e.target.files[0]; if (!f) return
     const fd = new FormData(); fd.append('file', f)
-    if (carryOver) fd.append('carry_over', '1')
     try {
       const { data } = await api.post('/contracts/import_excel/', fd)
       alert(`Реестр загружен: новых позиций ${data.created}, обновлено ${data.updated}.` +
@@ -104,11 +102,6 @@ export default function Contracts({ user }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn ghost small btn-read" onClick={() => download('/contracts/export_excel/?' + params(), 'Договора.xlsx')}>Экспорт в Excel</button>
           {mayEdit && <>
-            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
-              title="Статус из файла берётся как есть, минуя цепочку. Нужно при переезде с прежнего учёта.">
-              <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={carryOver} onChange={e => setCarryOver(e.target.checked)} />
-              перенос истории
-            </label>
             <button className="btn ghost small" onClick={() => fileRef.current.click()}>Импорт «Договора.xlsx»</button>
             <input type="file" ref={fileRef} accept=".xlsx" style={{ display: 'none' }} onChange={importExcel} />
           </>}
