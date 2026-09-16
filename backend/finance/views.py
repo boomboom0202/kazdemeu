@@ -193,7 +193,7 @@ def build_summary():
         running = round(running + net, 2)
         months.append({"month": k, "income": round(inc, 2), "other_income": round(oth, 2),
                        "contract_expenses": round(exp, 2), "admin_expenses": round(adm, 2),
-                       "net": net, "cumulative": running})
+                       "spent": round(exp + adm, 2), "net": net, "cumulative": running})
 
     labels = dict(ExpenseKind.choices)
     kinds = [{"kind": r["kind"], "label": labels.get(r["kind"], r["kind"]), "total": _f(r["t"])}
@@ -210,6 +210,8 @@ def build_summary():
         "contract_expenses": spent,
         "contracts_profit": round(_f(tot["amount"]) - spent, 2),
         "admin_expenses": admin_total,
+        # весь расход фирмы: договоры и административные вместе
+        "spent_total": round(spent + admin_total, 2),
         "other_income": other_total,
         # живые деньги: всё полученное минус всё потраченное
         "cash": round(paid + other_total - spent - admin_total, 2),

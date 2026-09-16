@@ -57,6 +57,7 @@ function Summary() {
         <div className="kpi"><div className="v">{fmt(d.debt)}</div><div className="l">заказчики ещё должны</div></div>
         <div className="kpi"><div className="v">{fmt(d.contract_expenses)}</div><div className="l">расходы по договорам</div></div>
         <div className="kpi"><div className="v">{fmt(d.admin_expenses)}</div><div className="l">административные</div></div>
+        <div className="kpi"><div className="v">{fmt(d.spent_total)}</div><div className="l">потрачено всего</div></div>
         {d.other_income > 0 && <div className="kpi"><div className="v">{fmt(d.other_income)}</div><div className="l">прочие поступления</div></div>}
         <div className={'kpi ' + (d.cash < 0 ? 'warn' : 'good')}><div className="v">{fmt(d.cash)}</div><div className="l">деньги сейчас: получено − потрачено</div></div>
         <div className={'kpi ' + (d.expected_result < 0 ? 'warn' : 'good')}><div className="v">{fmt(d.expected_result)}</div><div className="l">итог, когда заказчики доплатят</div></div>
@@ -86,15 +87,16 @@ function Summary() {
         <div className="card" style={{ padding: 0 }}>
           <div className="toolbar"><b>По месяцам</b></div>
           <div className="tablewrap"><table className="sheet">
-            <thead><tr><th>Месяц</th><th className="num">Приход</th><th className="num">Расходы договоров</th><th className="num">Адм.</th><th className="num">Итог</th><th className="num">Нарастающим</th></tr></thead>
+            <thead><tr><th>Месяц</th><th className="num">Приход</th><th className="num">Расходы договоров</th><th className="num">Адм.</th><th className="num">Всего расход</th><th className="num">Итог</th><th className="num">Нарастающим</th></tr></thead>
             <tbody>
-              {d.months.length === 0 && <tr><td colSpan={6} className="muted">Движений денег нет.</td></tr>}
+              {d.months.length === 0 && <tr><td colSpan={7} className="muted">Движений денег нет.</td></tr>}
               {d.months.map(m => (
                 <tr key={m.month}>
                   <td>{monthLabel(m.month)}</td>
                   <td className="num">{fmt(m.income + m.other_income)}</td>
                   <td className="num">{fmt(m.contract_expenses)}</td>
                   <td className="num">{fmt(m.admin_expenses)}</td>
+                  <td className="num"><b>{fmt(m.spent)}</b></td>
                   <td className={'num ' + (m.net < 0 ? 'neg' : 'pos')}>{fmt(m.net)}</td>
                   <td className="num">{fmt(m.cumulative)}</td>
                 </tr>
