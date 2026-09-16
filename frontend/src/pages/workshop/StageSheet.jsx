@@ -70,7 +70,7 @@ export default function StageSheet({ user, onChange }) {
     } else {
       const materials = kind === 'cut' ? mats.filter(m => m.material.trim() && m.meters !== '') : []
       await api.post('/stage-entries/', { stage: orderRow.stage, size: form.size, date: form.date, qty: form.qty,
-        extra: form.extra, note: form.note, materials })
+        brigade: form.brigade || null, extra: form.extra, note: form.note, materials })
     }
     setForm(f => ({ ...f, size: '', qty: '', extra: '', note: '' }))
     setMats([{ material: 'основа', meters: '' }])
@@ -118,11 +118,11 @@ export default function StageSheet({ user, onChange }) {
               </select></div>
             <div><label className="f">{kind === 'sewing' ? 'Выдано, шт' : 'Штук'}</label>
               <input type="number" min="1" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
-            {kind === 'sewing' && <div><label className="f">Бригада</label>
+            <div><label className="f">{kind === 'sewing' ? 'Бригада' : 'Кто делал'}</label>
               <select value={form.brigade} onChange={e => setForm({ ...form, brigade: e.target.value })}>
-                <option value="">— выбрать —</option>
+                <option value="">{kind === 'sewing' ? '— выбрать —' : '— не указан —'}</option>
                 {brigades.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-              </select></div>}
+              </select></div>
             {kind !== 'sewing' && t.extra_label && <div><label className="f">{t.extra_label}</label>
               <input value={form.extra} onChange={e => setForm({ ...form, extra: e.target.value })} /></div>}
             {kind !== 'sewing' && <div><label className="f">Примечание</label>
@@ -214,7 +214,7 @@ function EntriesGrid({ data, mayWrite, run }) {
     }
     return groups
   }, [data.entries])
-  const cols = t.kind === 'cut' ? 7 : 5 + (t.extra_label ? 1 : 0)
+  const cols = (t.kind === 'cut' ? 7 : 5 + (t.extra_label ? 1 : 0)) + 1   // +1 — «кто делал»
 
   return (
     <div className="card" style={{ padding: 0 }}>
@@ -226,7 +226,7 @@ function EntriesGrid({ data, mayWrite, run }) {
           <th>Размер</th><th className="num">Шт</th>
           {t.kind === 'cut' && <><th className="num">Метраж</th><th className="num">м/шт</th></>}
           {t.kind !== 'cut' && t.extra_label && <th>{t.extra_label}</th>}
-          <th>Примечание</th>{mayWrite && <th />}
+          <th>Кто делал</th><th>Примечание</th>{mayWrite && <th />}
         </tr></thead>
         <tbody>
           {byDate.length === 0 && <tr><td colSpan={cols + 1} className="muted">Записей пока нет.</td></tr>}
@@ -245,6 +245,7 @@ function EntriesGrid({ data, mayWrite, run }) {
                     {i === 0 && <td rowSpan={mats.length} className="num"><b>{e.qty}</b></td>}
                     {t.kind === 'cut' && <><td className="num">{m ? fmtD(m.meters) : ''}</td><td className="num">{m ? fmtD(m.per_unit) : ''}</td></>}
                     {t.kind !== 'cut' && t.extra_label && <td>{e.extra}</td>}
+                    {i === 0 && <td rowSpan={mats.length}>{e.brigade_label || <span className="muted">—</span>}</td>}
                     {i === 0 && <td rowSpan={mats.length}>{e.note}</td>}
                     {i === 0 && mayWrite && <td rowSpan={mats.length}>
                       <button className="btn small ghost" title="Удалить запись" onClick={() => confirm(`Удалить запись ${e.size} · ${e.qty} шт от ${dmy(e.date)}?`) && run(() => api.delete(`/stage-entries/${e.id}/`))}>✕</button>

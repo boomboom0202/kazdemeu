@@ -167,7 +167,7 @@ class StageTemplateViewSet(Base):
             data.update({"dates": sorted(dates), "jobs": rows})
         else:
             entries = (StageEntry.objects.filter(stage_id__in=stage_ids)
-                       .select_related("size", "stage__order").prefetch_related("materials"))
+                       .select_related("size", "stage__order", "brigade").prefetch_related("materials"))
             if d_from:
                 entries = entries.filter(date__gte=d_from)
             if d_to:
@@ -177,6 +177,8 @@ class StageTemplateViewSet(Base):
                 rows.append({"id": e.id, "date": e.date, "order": e.stage.order_id,
                              "product": e.stage.order.product, "size_id": e.size_id, "size": e.size.size,
                              "qty": e.qty, "extra": e.extra, "note": e.note,
+                             "brigade": e.brigade_id,
+                             "brigade_label": str(e.brigade) if e.brigade_id else None,
                              "materials": [{"material": m.material, "meters": _num(m.meters),
                                             "per_unit": _num(m.per_unit)} for m in e.materials.all()]})
             data["entries"] = rows
@@ -185,7 +187,8 @@ class StageTemplateViewSet(Base):
 
 class BrigadeViewSet(Base):
     access_key = "workshop.brigades"
-    queryset = Brigade.objects.prefetch_related("jobs__progress", "jobs__size__order")
+    queryset = Brigade.objects.prefetch_related("jobs__progress", "jobs__size__order",
+                                                "entries__stage__template")
     serializer_class = BrigadeSerializer
     search_fields = ["leader"]
 

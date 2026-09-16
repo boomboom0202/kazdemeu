@@ -53,7 +53,7 @@ class BrigadeSerializer(serializers.ModelSerializer):
         return str(obj)
 
     def get_stats(self, obj):
-        """Сколько бригада сшила и сколько у неё сейчас в работе."""
+        """Сколько бригада сшила, сколько у неё в работе и что сделано на других этапах."""
         sewn = in_work = active = 0
         for job in obj.jobs.all():
             s = job_sewn(job)
@@ -61,7 +61,13 @@ class BrigadeSerializer(serializers.ModelSerializer):
             if job.qty > s:
                 in_work += job.qty - s
                 active += 1
-        return {"sewn": sewn, "in_work": in_work, "active_jobs": active}
+        by_stage = {}
+        for e in obj.entries.all():
+            name = e.stage.template.name
+            by_stage[name] = by_stage.get(name, 0) + e.qty
+        return {"sewn": sewn, "in_work": in_work, "active_jobs": active,
+                "by_stage": [{"name": k, "qty": v}
+                             for k, v in sorted(by_stage.items(), key=lambda kv: -kv[1])]}
 
 
 class WorkSizeSerializer(serializers.ModelSerializer):
@@ -204,7 +210,8 @@ class WorkOrderDetailSerializer(WorkOrderSerializer):
         for s in obj.sizes.all():
             for e in s.entries.all():
                 mats = ", ".join(f"{m.material} {_num(m.meters):g} м" for m in e.materials.all())
-                extra = " · ".join(x for x in (e.extra, mats, e.note) if x)
+                who = str(e.brigade) if e.brigade_id else ""
+                extra = " · ".join(x for x in (who, e.extra, mats, e.note) if x)
                 events.append({"date": e.date, "stamp": e.created_at, "stage": names.get(e.stage_id, ""),
                                "size": s.size, "text": f"{e.qty} шт" + (f" · {extra}" if extra else "")})
             for j in s.jobs.all():
@@ -243,11 +250,15 @@ class StageEntrySerializer(serializers.ModelSerializer):
     materials = EntryMaterialSerializer(many=True, required=False)
     size_label = serializers.CharField(source="size.size", read_only=True)
     stage_name = serializers.CharField(source="stage.template.name", read_only=True)
+    brigade_label = serializers.SerializerMethodField()
     order = serializers.IntegerField(source="stage.order_id", read_only=True)
 
     class Meta:
         model = StageEntry
         fields = "__all__"
+
+    def get_brigade_label(self, obj):
+        return str(obj.brigade) if obj.brigade else None
 
     def validate_materials(self, value):
         clean, seen = [], set()

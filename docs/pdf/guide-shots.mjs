@@ -106,7 +106,7 @@ const pick = async (nth, text) => {
   const value = await sel.evaluate((s, text) => [...s.options].find(o => o.text.includes(text))?.value, text)
   await sel.selectOption(value); await p.waitForTimeout(250)
 }
-await pick(0, 'Куртка АУП'); await pick(1, '54/176')
+await pick(0, 'Куртка АУП'); await pick(1, '54/176'); await pick(2, 'Ербол')
 await p.fill('.card.stitch input[type=number] >> nth=0', '10')
 await p.fill('.card.stitch input[placeholder="метров"]', '24.3')
 await p.click('.card.stitch button:has-text("+ материал")')

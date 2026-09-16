@@ -34,22 +34,27 @@ export default function Brigades({ user }) {
           <div style={{ alignSelf: 'flex-end' }}><button className="btn" disabled={!form.leader}
             onClick={() => run(async () => { await api.post('/brigades/', { leader: form.leader, people: form.people || 0 }); setForm({ leader: '', people: '' }) })}>Добавить</button></div>
         </div>
-        <p className="muted">В отчёте цеха пишут «Наср + 9 бала» — бригадир и девять человек с ним.</p>
+        <p className="muted">В отчёте цеха пишут «Наср + 9 бала» — бригадир и девять человек с ним.
+          Один человек — «людей с ним» ноль: так в справочник заносят закройщика или упаковщицу,
+          чтобы указывать их в записях этапов.</p>
       </div>
       <div className="card" style={{ padding: 0 }}>
         <div className="tablewrap"><table>
           <thead><tr>
             <th>Бригада</th><th className="num">Партий в работе</th><th className="num">Шьётся, шт</th>
-            <th className="num">Сшито всего</th><th>Работает</th><th />
+            <th className="num">Сшито всего</th><th>Сделано на этапах</th><th>Работает</th><th />
           </tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={6} className="muted">Бригад пока нет.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">Бригад пока нет.</td></tr>}
             {rows.map(b => (
               <tr key={b.id} style={b.is_active ? {} : { opacity: 0.55 }}>
                 <td><b>{b.label}</b>{b.note && <div className="muted">{b.note}</div>}</td>
                 <td className="num">{b.stats.active_jobs}</td>
                 <td className="num">{fmt(b.stats.in_work)}</td>
                 <td className="num">{fmt(b.stats.sewn)}</td>
+                <td>{b.stats.by_stage.length
+                  ? b.stats.by_stage.map(s => `${s.name} ${fmt(s.qty)}`).join(' · ')
+                  : <span className="muted">—</span>}</td>
                 <td><input type="checkbox" style={{ width: 'auto' }} checked={b.is_active}
                   onChange={e => run(() => api.patch(`/brigades/${b.id}/`, { is_active: e.target.checked }))} /></td>
                 <td><button className="btn small ghost" onClick={() => confirm(`Удалить бригаду «${b.label}»?`) &&

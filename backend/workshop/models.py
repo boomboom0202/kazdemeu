@@ -131,6 +131,9 @@ class StageEntry(models.Model):
     """Запись этапа за день: сколько штук размера прошло этап."""
     stage = models.ForeignKey(WorkOrderStage, on_delete=models.PROTECT, related_name="entries")
     size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="entries")
+    brigade = models.ForeignKey(Brigade, on_delete=models.PROTECT, related_name="entries",
+                                null=True, blank=True, verbose_name="Кто делал",
+                                help_text="Бригада или человек из справочника бригад")
     date = models.DateField("Дата", default=timezone.localdate)
     qty = models.PositiveIntegerField("Штук", validators=AT_LEAST_ONE)
     extra = models.CharField("Доп. колонка", max_length=60, blank=True)
