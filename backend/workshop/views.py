@@ -137,7 +137,7 @@ class StageTemplateViewSet(Base):
                 tot["free"] += free
             c = o.contract
             orders.append({"order": o.id, "stage": me.id, "product": o.product,
-                           "status": o.status, "deadline": o.deadline, "sewing_rate": _num(o.sewing_rate),
+                           "status": o.status, "deadline": o.deadline,
                            "contract": c.id if c else None,
                            "contract_number": (c.purchase_no or c.number) if c else None,
                            "customer": c.customer.name if c else o.client,

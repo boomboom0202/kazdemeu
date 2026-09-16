@@ -134,7 +134,7 @@ await p.click('.tabs button:has-text("Готовая продукция")'); awa
 
 await nav('Финансы'); await main('22-finansy-svodka', 900)
 await part('.card:has(.toolbar b:text-is("По договорам"))', '23-finansy-po-dogovoram', 640)
-await p.click('.tabs button:has-text("Административные")'); await p.waitForSelector('table.matrix'); await settle();
+await p.click('.tabs button:has-text("административные")'); await p.waitForSelector('table.matrix'); await settle();
 await part('.card:has(table.matrix)', '24-adm-rashody')
 
 await nav('Аналитика'); await main('25-analitika', 900)

@@ -53,17 +53,15 @@ class BrigadeSerializer(serializers.ModelSerializer):
         return str(obj)
 
     def get_stats(self, obj):
-        """Сколько бригада сшила и сколько ей начислено по расценкам заказов."""
+        """Сколько бригада сшила и сколько у неё сейчас в работе."""
         sewn = in_work = active = 0
-        earned = Decimal("0")
         for job in obj.jobs.all():
             s = job_sewn(job)
             sewn += s
-            earned += s * job.size.order.sewing_rate
             if job.qty > s:
                 in_work += job.qty - s
                 active += 1
-        return {"sewn": sewn, "in_work": in_work, "active_jobs": active, "earned": _num(earned)}
+        return {"sewn": sewn, "in_work": in_work, "active_jobs": active}
 
 
 class WorkSizeSerializer(serializers.ModelSerializer):
@@ -185,8 +183,6 @@ class WorkOrderDetailSerializer(WorkOrderSerializer):
                 r["sewn"] += job_sewn(j)
                 if s.size not in r["sizes"]:
                     r["sizes"].append(s.size)
-        for r in rows.values():
-            r["earned"] = _num(r["sewn"] * obj.sewing_rate)
         return sorted(rows.values(), key=lambda r: -r["assigned"])
 
     def get_materials(self, obj):

@@ -12,7 +12,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
   const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({
     product: contract?.title || '', contract: contract?.id || '', client: '',
-    deadline: contract?.deadline || '', sewing_rate: '', sizes_text: '',
+    deadline: contract?.deadline || '', sizes_text: '',
   })
   const [chosen, setChosen] = useState([])
   const [sizesOk, setSizesOk] = useState(false)
@@ -41,7 +41,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
     try {
       const { data } = await api.post('/work-orders/', {
         product: form.product, contract: form.contract || null, client: form.client,
-        deadline: form.deadline || null, sewing_rate: form.sewing_rate || 0,
+        deadline: form.deadline || null,
         sizes_text: form.sizes_text, template_ids: templates.filter(t => chosen.includes(t.id)).map(t => t.id),
       })
       onDone(data)
@@ -64,8 +64,6 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
           <input value={form.client} placeholder="частный заказ" onChange={e => setForm({ ...form, client: e.target.value })} /></div>}
         <div><label className="f">Срок</label>
           <input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></div>
-        <div><label className="f">Расценка пошива, ₸/шт</label>
-          <input type="number" value={form.sewing_rate} placeholder="3000" onChange={e => setForm({ ...form, sewing_rate: e.target.value })} /></div>
       </div>
 
       <label className="f">Размеры</label>

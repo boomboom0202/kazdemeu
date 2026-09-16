@@ -6,7 +6,7 @@ import { Loader, LoadError } from '../components/Loader'
 
 const TABS = [
   ['summary', 'finance.reports', 'Сводка'],
-  ['admin', 'finance.admin', 'Административные расходы'],
+  ['admin', 'finance.admin', 'Расходы административные'],
   ['expenses', 'contracts.expenses', 'Расходы по договорам'],
   ['income', 'finance.income', 'Прочие поступления'],
 ]
@@ -157,15 +157,14 @@ function AdminExpenses({ canWrite }) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const thisMonth = today().slice(0, 7)
-  const [form, setForm] = useState({ category: '', amount: '', comment: '', month: thisMonth })
-  const [newCat, setNewCat] = useState({ name: '', monthly_plan: '' })
+  const [form, setForm] = useState({ cat: '', amount: '', comment: '', month: thisMonth })
 
   const loadSummary = () => {
     setFailed(false)
     return api.get('/admin-expenses/summary/').then(r => {
       setSum(r.data)
       const first = r.data.categories[0]
-      if (first) { setCat(c => c || String(first.id)); setForm(f => ({ ...f, category: f.category || String(first.id) })) }
+      if (first) setCat(c => c || String(first.id))
     }).catch(() => setFailed(true))
   }
   const loadLines = () => {
@@ -243,29 +242,32 @@ function AdminExpenses({ canWrite }) {
 
       {canWrite && (
         <div className="card stitch">
+          <h2>Внести расход</h2>
           <div className="formrow">
-            <div><label className="f">Статья</label>
-              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-                <option value="">— выбрать —</option>
-                {sum.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
+            <div style={{ flex: 1.5 }}><label className="f">Статья</label>
+              <input list="admin-cats" value={form.cat} placeholder="Оклады, Аренда, Налоги…"
+                onChange={e => setForm({ ...form, cat: e.target.value })} />
+              <datalist id="admin-cats">{sum.categories.map(c => <option key={c.id} value={c.name} />)}</datalist></div>
             <div><label className="f">Сумма</label><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
             <div style={{ flex: 2 }}><label className="f">Комментарий</label>
               <input value={form.comment} placeholder="оклад конструктор, аренда цех…" onChange={e => setForm({ ...form, comment: e.target.value })} /></div>
             <div><label className="f">Месяц</label><input type="month" value={form.month} onChange={e => setForm({ ...form, month: e.target.value })} /></div>
-            <div style={{ alignSelf: 'flex-end' }}><button className="btn" disabled={!form.category || !form.amount} onClick={() => run(async () => {
-              await api.post('/admin-expenses/', { category: form.category, amount: form.amount, comment: form.comment, month: form.month ? `${form.month}-01` : null })
-              setForm({ ...form, amount: '', comment: '' }); setCat(String(form.category))
+            <div style={{ alignSelf: 'flex-end' }}><button className="btn" disabled={!form.cat.trim() || !form.amount} onClick={() => run(async () => {
+              const name = form.cat.trim()
+              let c = sum.categories.find(x => x.name.toLowerCase() === name.toLowerCase())
+              if (!c) c = (await api.post('/admin-categories/', { name, position: sum.categories.length })).data
+              await api.post('/admin-expenses/', { category: c.id, amount: form.amount, comment: form.comment, month: form.month ? `${form.month}-01` : null })
+              setForm({ ...form, amount: '', comment: '' }); setCat(String(c.id))
             })}>Добавить</button></div>
           </div>
-          <div className="formrow" style={{ maxWidth: 620 }}>
-            <div><input value={newCat.name} placeholder="Новая статья: Налоги, Реклама…" onChange={e => setNewCat({ ...newCat, name: e.target.value })} /></div>
-            <div><input type="number" value={newCat.monthly_plan} placeholder="план в месяц, ₸" onChange={e => setNewCat({ ...newCat, monthly_plan: e.target.value })} /></div>
-            <div style={{ flex: '0 0 auto' }}><button className="btn ghost" disabled={!newCat.name.trim()} onClick={() => run(async () => {
-              const { data } = await api.post('/admin-categories/', { name: newCat.name.trim(), monthly_plan: newCat.monthly_plan || 0, position: sum.categories.length })
-              setNewCat({ name: '', monthly_plan: '' }); setCat(String(data.id)); setForm(f => ({ ...f, category: String(data.id) }))
-            })}>+ статья</button></div>
-          </div>
+          <p className="muted">
+            Это траты вне договоров: оклады, аренда, налоги, связь. Статью можно выбрать из списка или
+            вписать новую — она создастся сама.
+            {sum.categories.length === 0 && <> Обычно заводят: {['Оклады', 'Аренда', 'Налоги', 'Связь', 'Хозрасходы', 'Транспорт'].map(n => (
+              <button key={n} type="button" className="btn small ghost" style={{ margin: '0 4px 4px 0' }}
+                onClick={() => setForm(f => ({ ...f, cat: n }))}>{n}</button>))}</>}
+          </p>
+          <p className="muted">Расходы по договору — пошив, ткань, доставка — вносятся в самом договоре, во вкладке «Расходы».</p>
         </div>
       )}
 

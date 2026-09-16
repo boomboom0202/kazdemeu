@@ -97,7 +97,7 @@ class Command(BaseCommand):
         nasr = Brigade.objects.create(leader="Наср", people=9)
         akbar = Brigade.objects.create(leader="Акбар", people=2)
         order = WorkOrder.objects.create(product="Куртка АУП", contract=c1, client=pav.name,
-                                         deadline=c1.deadline, sewing_rate=3000)
+                                         deadline=c1.deadline)
         set_route(order, StageTemplate.objects.filter(is_active=True).values_list("id", flat=True))
         rows, _ = parse_sizes("44/170 - 35\n46/176 - 45\n48/158 - 25\n54/176 - 10")
         apply_sizes(order, rows)

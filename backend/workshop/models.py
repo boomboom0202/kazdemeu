@@ -86,8 +86,6 @@ class WorkOrder(models.Model):
     client = models.CharField("Для кого", max_length=200, blank=True,
                               help_text="Если договора нет: «частный заказ»")
     deadline = models.DateField("Срок", null=True, blank=True)
-    sewing_rate = models.DecimalField("Расценка пошива, ₸/шт", max_digits=10, decimal_places=2,
-                                      default=0, validators=NON_NEGATIVE)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.IN_WORK)
     note = models.TextField("Примечание", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

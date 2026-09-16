@@ -48,8 +48,7 @@ export default function OrderCard({ user, onChange }) {
               ? <>договор <Link to={`/contracts/${o.contract}`}>{o.contract_number}</Link> · </>
               : <>договор {o.contract_number} · </>)}
             {(o.customer_name || o.client) && <>{o.customer_name || o.client} · </>}
-            {o.deadline && <>срок {dmy(o.deadline)} · </>}
-            расценка пошива {fmt(o.sewing_rate)} ₸/шт
+            {o.deadline && <>срок {dmy(o.deadline)}</>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -183,13 +182,13 @@ export default function OrderCard({ user, onChange }) {
       {tab === 'brigades' && (
         <div className="card" style={{ padding: 0 }}>
           <div className="tablewrap"><table>
-            <thead><tr><th>Бригада</th><th className="num">Выдано</th><th className="num">Сшито</th><th className="num">Начислено, ₸</th></tr></thead>
+            <thead><tr><th>Бригада</th><th className="num">Выдано</th><th className="num">Сшито</th></tr></thead>
             <tbody>
-              {o.brigades.length === 0 && <tr><td colSpan={4} className="muted">Пока никому не выдавали.</td></tr>}
+              {o.brigades.length === 0 && <tr><td colSpan={3} className="muted">Пока никому не выдавали.</td></tr>}
               {o.brigades.map(b => (
                 <tr key={b.brigade}>
                   <td><b>{b.label}</b><div className="muted">{b.sizes.join(', ')}</div></td>
-                  <td className="num">{b.assigned}</td><td className="num">{b.sewn}</td><td className="num">{fmt(b.earned)}</td>
+                  <td className="num">{b.assigned}</td><td className="num">{b.sewn}</td>
                 </tr>
               ))}
             </tbody>
