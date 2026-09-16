@@ -8,11 +8,11 @@ from accounts.permissions import RoleSectionPermission, can_read
 from accounts.mixins import SafeDestroyMixin
 from .calc import (with_details, parse_sizes, apply_sizes, set_route, order_summary,
                    size_stage_stats, job_ready, job_sewn)
-from .models import (StageTemplate, Brigade, WorkOrder, WorkOrderStage, WorkSize, StageEntry,
+from .models import (StageTemplate, WorkOrder, WorkOrderStage, WorkSize, StageEntry,
                      SewingJob, SewingProgress, ensure_default_stages)
-from .serializers import (StageTemplateSerializer, BrigadeSerializer, WorkOrderSerializer,
-                          WorkOrderDetailSerializer, WorkSizeSerializer, StageEntrySerializer,
-                          SewingJobSerializer, SewingProgressSerializer, _num)
+from .serializers import (StageTemplateSerializer, WorkOrderSerializer, WorkOrderDetailSerializer,
+                          WorkSizeSerializer, StageEntrySerializer, SewingJobSerializer,
+                          SewingProgressSerializer, who, _num)
 
 # Записи цеха — факты: их не правят, а удаляют ошибочную и вносят заново.
 # Так в истории не бывает тихо переписанных цифр.
@@ -147,7 +147,7 @@ class StageTemplateViewSet(Base):
         data = {"template": StageTemplateSerializer(template).data, "orders": orders}
         if template.kind == StageTemplate.Kind.SEWING:
             jobs = (SewingJob.objects.filter(stage_id__in=stage_ids)
-                    .select_related("brigade", "size", "stage__order")
+                    .select_related("responsible", "size", "stage__order")
                     .prefetch_related("progress"))
             dates, rows = set(), []
             for j in jobs:
@@ -158,16 +158,17 @@ class StageTemplateViewSet(Base):
                         continue
                     cells[p.date.isoformat()] = _num(p.ready)
                     dates.add(p.date.isoformat())
-                rows.append({"id": j.id, "brigade": j.brigade_id, "brigade_label": str(j.brigade),
+                rows.append({"id": j.id, "responsible": j.responsible_id, "workers": j.workers,
+                             "who_label": who(j) or "не указан",
                              "order": j.stage.order_id, "product": j.stage.order.product,
                              "size_id": j.size_id, "size": j.size.size, "qty": j.qty,
                              "started": j.started, "cells": cells,
                              "ready": _num(job_ready(j)), "sewn": job_sewn(j)})
-            rows.sort(key=lambda r: (r["brigade_label"], r["order"], str(r["started"])))
+            rows.sort(key=lambda r: (r["who_label"], r["order"], str(r["started"])))
             data.update({"dates": sorted(dates), "jobs": rows})
         else:
             entries = (StageEntry.objects.filter(stage_id__in=stage_ids)
-                       .select_related("size", "stage__order", "brigade").prefetch_related("materials"))
+                       .select_related("size", "stage__order", "responsible").prefetch_related("materials"))
             if d_from:
                 entries = entries.filter(date__gte=d_from)
             if d_to:
@@ -177,20 +178,12 @@ class StageTemplateViewSet(Base):
                 rows.append({"id": e.id, "date": e.date, "order": e.stage.order_id,
                              "product": e.stage.order.product, "size_id": e.size_id, "size": e.size.size,
                              "qty": e.qty, "extra": e.extra, "note": e.note,
-                             "brigade": e.brigade_id,
-                             "brigade_label": str(e.brigade) if e.brigade_id else None,
+                             "responsible": e.responsible_id, "workers": e.workers,
+                             "who_label": who(e) or None,
                              "materials": [{"material": m.material, "meters": _num(m.meters),
                                             "per_unit": _num(m.per_unit)} for m in e.materials.all()]})
             data["entries"] = rows
         return Response(data)
-
-
-class BrigadeViewSet(Base):
-    access_key = "workshop.brigades"
-    queryset = Brigade.objects.prefetch_related("jobs__progress", "jobs__size__order",
-                                                "entries__stage__template")
-    serializer_class = BrigadeSerializer
-    search_fields = ["leader"]
 
 
 class WorkOrderViewSet(Base):
@@ -271,10 +264,45 @@ def _removal_error(size, stage, removed_done):
 class StageEntryViewSet(Base):
     access_key = "workshop.entries"
     http_method_names = FACTS_ONLY
-    queryset = (StageEntry.objects.select_related("size", "stage__template", "stage__order")
-                .prefetch_related("materials"))
+    queryset = (StageEntry.objects.select_related("size", "stage__template", "stage__order",
+                                                  "responsible").prefetch_related("materials"))
     serializer_class = StageEntrySerializer
     filterset_fields = ["stage", "size", "stage__order", "stage__template"]
+
+    @action(detail=False, methods=["get"])
+    def workers(self, request):
+        """Кто сколько сделал: строка на ответственного с людьми, которых он вписал.
+        Штуки — по этапам, пошив — сшитое из партий."""
+        rows = {}
+
+        def row(obj):
+            key = (obj.responsible_id, obj.workers)
+            return rows.setdefault(key, {
+                "responsible": obj.responsible_id, "label": who(obj) or "не указан",
+                "workers": obj.workers, "by_stage": {}, "sewn": 0, "in_work": 0})
+
+        for e in (StageEntry.objects.select_related("responsible", "stage__template")
+                  .filter(stage__order__status=WorkOrder.Status.IN_WORK)):
+            r = row(e)
+            name = e.stage.template.name
+            r["by_stage"][name] = r["by_stage"].get(name, 0) + e.qty
+        for j in (SewingJob.objects.select_related("responsible", "stage__template")
+                  .prefetch_related("progress")
+                  .filter(stage__order__status=WorkOrder.Status.IN_WORK)):
+            r = row(j)
+            sewn = job_sewn(j)
+            r["sewn"] += sewn
+            r["in_work"] += max(j.qty - sewn, 0)
+            name = j.stage.template.name
+            r["by_stage"][name] = r["by_stage"].get(name, 0) + sewn
+
+        out = []
+        for r in rows.values():
+            r["by_stage"] = [{"name": k, "qty": v} for k, v in sorted(r["by_stage"].items(),
+                                                                      key=lambda kv: -kv[1])]
+            r["total"] = sum(s["qty"] for s in r["by_stage"])
+            out.append(r)
+        return Response(sorted(out, key=lambda r: -r["total"]))
 
     def destroy(self, request, *args, **kwargs):
         entry = self.get_object()
@@ -287,10 +315,10 @@ class StageEntryViewSet(Base):
 class SewingJobViewSet(Base):
     access_key = "workshop.entries"
     http_method_names = FACTS_ONLY
-    queryset = (SewingJob.objects.select_related("brigade", "size", "stage__template", "stage__order")
+    queryset = (SewingJob.objects.select_related("responsible", "size", "stage__template", "stage__order")
                 .prefetch_related("progress"))
     serializer_class = SewingJobSerializer
-    filterset_fields = ["stage", "size", "stage__order", "brigade"]
+    filterset_fields = ["stage", "size", "stage__order", "responsible"]
 
     def destroy(self, request, *args, **kwargs):
         job = self.get_object()

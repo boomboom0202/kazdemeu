@@ -49,6 +49,8 @@ class Command(BaseCommand):
         hosts = [h for h in settings.ALLOWED_HOSTS if h != "*"]
         self.client = APIClient(HTTP_HOST=hosts[0].lstrip(".") if hosts else "testserver")
         self.client.force_authenticate(user)
+        # за работу в цехе отвечает технолог, если он заведён
+        self.responsible = (User.objects.filter(role="technologist", is_active=True).first() or user).id
         self.calls = 0
         self.today = timezone.localdate()
 
@@ -155,29 +157,25 @@ class Command(BaseCommand):
         self.step(f"заказ цеха: {len(sizes)} размеров, этапы — {', '.join(stages)}")
 
         # 5. бригады и работа по этапам
-        brigades = [self.post("/brigades/", {"leader": leader, "people": people}, "бригада")
-                    for leader, people in [("Наср", 9), ("Акбар", 2)]]
-        # исполнители на штучных этапах — те же карточки справочника, но без людей в бригаде
-        workers = {name: self.post("/brigades/", {"leader": name, "people": 0,
-                                                  "note": note}, "исполнитель")["id"]
-                   for name, note in [("Ербол", "закройщик"), ("Гульмира", "вышивка и чистка"),
-                                      ("Айгуль", "упаковка")]}
+        # кто отвечает — пользователь системы, кто делал руками — вписывается строкой
+        crews = ["Наср + 9", "Акбар + 2"]
         for i, (size, plan, cut, embroidery, sewing, clean, pack, _ship) in enumerate(PLAN):
             if cut:
                 self.post("/stage-entries/", {
                     "stage": stages["Крой"], "size": sizes[size], "qty": cut, "date": self.days(20 - i),
-                    "brigade": workers["Ербол"], "materials": [{"material": m, "meters": round(per * cut, 1)}
+                    "responsible": self.responsible, "workers": "Ербол",
+                    "materials": [{"material": m, "meters": round(per * cut, 1)}
                                                                for m, per in CUT_MATERIALS.items()],
                 }, f"крой {size}")
             if embroidery:
                 self.post("/stage-entries/", {"stage": stages["Вышивка"], "size": sizes[size],
                                               "qty": embroidery, "extra": "полный",
-                                              "brigade": workers["Гульмира"],
+                                              "responsible": self.responsible, "workers": "Гульмира",
                                               "date": self.days(16 - i)}, f"вышивка {size}")
             if sewing:
                 qty, ready = sewing
                 job = self.post("/sewing-jobs/", {
-                    "stage": stages["Тигин"], "size": sizes[size], "brigade": brigades[i % 2]["id"],
+                    "stage": stages["Тигин"], "size": sizes[size], "responsible": self.responsible, "workers": crews[i % 2],
                     "qty": qty, "started": self.days(14 - i)}, f"партия {size}")
                 self.post(f"/sewing-jobs/{job['id']}/progress/",
                           {"date": self.days(10 - i), "ready": "0.3"}, f"готовность {size}")
@@ -185,11 +183,11 @@ class Command(BaseCommand):
                           {"date": self.days(4), "ready": ready}, f"готовность {size}")
             if clean:
                 self.post("/stage-entries/", {"stage": stages["Чистка"], "size": sizes[size],
-                                              "qty": clean, "brigade": workers["Гульмира"],
+                                              "qty": clean, "responsible": self.responsible, "workers": "Гульмира",
                                               "date": self.days(3)}, f"чистка {size}")
             if pack:
                 self.post("/stage-entries/", {"stage": stages["Упаковка"], "size": sizes[size],
-                                              "qty": pack, "brigade": workers["Айгуль"],
+                                              "qty": pack, "responsible": self.responsible, "workers": "Айгуль",
                                               "date": self.days(2)}, f"упаковка {size}")
         self.step("цех: у каждой записи указано, кто делал; пошив — по бригадам")
 
@@ -243,14 +241,10 @@ class Command(BaseCommand):
             for st in s["stages"]:
                 extra = f", шьётся {st['in_work']}" if st.get("in_work") else ""
                 out.write(f"    {st['name']}: прошло {st['done']}{extra}")
-            for b in w["brigades"]:
-                out.write(f"    бригада {b['label']}: выдано {b['assigned']}, сшито {b['sewn']}")
             out.write("  кто что сделал:")
-            for b in self.get("/brigades/?page_size=100", "бригады")["results"]:
-                st = b["stats"]
-                work = " · ".join(f"{x['name']} {x['qty']}" for x in st["by_stage"])
-                sewn = f"пошив {st['sewn']}" if st["sewn"] else ""
-                out.write(f"    {b['label']}: {' · '.join(x for x in (sewn, work) if x) or '—'}")
+            for r in self.get("/stage-entries/workers/", "исполнители"):
+                work = " · ".join(f"{x['name']} {x['qty']}" for x in r["by_stage"])
+                out.write(f"    {r['label']}: {work}" + (f", шьётся {r['in_work']}" if r["in_work"] else ""))
         out.write("\nСКЛАД")
         for line in goods:
             out.write(f"  {line['product']} {line['size']}: из цеха {line['made']}, "

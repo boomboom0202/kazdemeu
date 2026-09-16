@@ -36,7 +36,7 @@ class Command(BaseCommand):
         from tenders.models import Tender, Platform, OwnCompany
         from warehouse.models import GoodsMovement, MaterialBatch, StockMovement, Material, Supplier
         from workshop.models import (SewingProgress, SewingJob, EntryMaterial, StageEntry,
-                                     WorkOrderStage, WorkSize, WorkOrder, Brigade, StageTemplate,
+                                     WorkOrderStage, WorkSize, WorkOrder, StageTemplate,
                                      ensure_default_stages)
 
         # Порядок важен: сначала зависимые записи, потом то, на что они ссылаются.
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         plan = [
             SewingProgress, SewingJob, EntryMaterial, StageEntry, WorkOrderStage, WorkSize,
             GoodsMovement, StockMovement, MaterialBatch,
-            WorkOrder, Brigade, StageTemplate,
+            WorkOrder, StageTemplate,
             ContractPayment, ContractExpense, Comment, ContractFile, Tender,
             Contract, Customer, Platform, OwnCompany,
             Material, Supplier,

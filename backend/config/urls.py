@@ -34,7 +34,6 @@ router.register("contract-files", con.ContractFileViewSet)
 router.register("comments", con.CommentViewSet)
 # цех
 router.register("stage-templates", ws.StageTemplateViewSet)
-router.register("brigades", ws.BrigadeViewSet)
 router.register("work-orders", ws.WorkOrderViewSet)
 router.register("work-sizes", ws.WorkSizeViewSet)
 router.register("stage-entries", ws.StageEntryViewSet)

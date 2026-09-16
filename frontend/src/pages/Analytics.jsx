@@ -123,8 +123,8 @@ export default function Analytics() {
                   <div className="fbar"><i style={{ width: (s.done / max * 100) + '%' }} /></div>
                   <span className="num">{fmt(s.done)}{s.in_work ? ` +${fmt(s.in_work)} в работе` : ''}</span></div>
               })}
-              <h3 className="sub">Бригады: сшито</h3>
-              {w.brigades.map(b => <div key={b.brigade} className="frow"><span className="fl">{b.brigade}</span><span className="num">{fmt(b.sewn)}{b.in_work ? ` · шьётся ${fmt(b.in_work)}` : ''}</span></div>)}
+              <h3 className="sub">Пошив: кто сколько сшил</h3>
+              {w.crews.map(b => <div key={b.who} className="frow"><span className="fl">{b.who}</span><span className="num">{fmt(b.sewn)}{b.in_work ? ` · шьётся ${fmt(b.in_work)}` : ''}</span></div>)}
             </div>
             <div>
               <h3 className="sub">Записи этапов по неделям, шт</h3>

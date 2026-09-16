@@ -2,12 +2,19 @@ from decimal import Decimal
 from rest_framework import serializers
 from .calc import (job_ready, job_sewn, order_summary, size_summary, free_capacity, parse_sizes,
                    apply_sizes, set_route)
-from .models import (StageTemplate, Brigade, WorkOrder, WorkOrderStage, WorkSize, StageEntry,
+from .models import (StageTemplate, WorkOrder, WorkOrderStage, WorkSize, StageEntry,
                      EntryMaterial, SewingJob, SewingProgress)
 
 
 def _num(v):
     return float(round(Decimal(v), 2))
+
+
+def who(obj):
+    """Кто отвечает и кто делал руками: «Сауле · Наср + 9»."""
+    user = obj.responsible
+    name = (user.get_full_name() or user.username) if user else ""
+    return " · ".join(x for x in (name, obj.workers) if x)
 
 
 class StageTemplateSerializer(serializers.ModelSerializer):
@@ -39,35 +46,6 @@ class StageTemplateSerializer(serializers.ModelSerializer):
                 "По этому этапу уже есть записи — вид листа поменять нельзя. "
                 "Заведите новый этап.")
         return value
-
-
-class BrigadeSerializer(serializers.ModelSerializer):
-    label = serializers.SerializerMethodField()
-    stats = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Brigade
-        fields = "__all__"
-
-    def get_label(self, obj):
-        return str(obj)
-
-    def get_stats(self, obj):
-        """Сколько бригада сшила, сколько у неё в работе и что сделано на других этапах."""
-        sewn = in_work = active = 0
-        for job in obj.jobs.all():
-            s = job_sewn(job)
-            sewn += s
-            if job.qty > s:
-                in_work += job.qty - s
-                active += 1
-        by_stage = {}
-        for e in obj.entries.all():
-            name = e.stage.template.name
-            by_stage[name] = by_stage.get(name, 0) + e.qty
-        return {"sewn": sewn, "in_work": in_work, "active_jobs": active,
-                "by_stage": [{"name": k, "qty": v}
-                             for k, v in sorted(by_stage.items(), key=lambda kv: -kv[1])]}
 
 
 class WorkSizeSerializer(serializers.ModelSerializer):
@@ -161,10 +139,10 @@ class WorkOrderSerializer(serializers.ModelSerializer):
 
 class WorkOrderDetailSerializer(WorkOrderSerializer):
     """Заказ целиком: этапы, сетка размеров с фактами по каждому этапу,
-    бригады, ткань, история."""
+    исполнители, ткань, история."""
     stages = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
-    brigades = serializers.SerializerMethodField()
+    workers = serializers.SerializerMethodField()
     materials = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
     contract_title = serializers.CharField(source="contract.title", read_only=True, default=None)
@@ -179,17 +157,26 @@ class WorkOrderDetailSerializer(WorkOrderSerializer):
         return [{"id": s.id, "size": s.size, "planned": s.planned, "position": s.position,
                  **size_summary(s, stages)} for s in obj.sizes.all()]
 
-    def get_brigades(self, obj):
+    def get_workers(self, obj):
+        """Кто работал по заказу: партии пошива и штуки на остальных этапах."""
         rows = {}
         for s in obj.sizes.all():
             for j in s.jobs.all():
-                r = rows.setdefault(j.brigade_id, {"brigade": j.brigade_id, "label": str(j.brigade),
-                                                   "assigned": 0, "sewn": 0, "sizes": []})
+                key = (j.responsible_id, j.workers)
+                r = rows.setdefault(key, {"label": who(j) or "не указан", "assigned": 0,
+                                          "sewn": 0, "done": 0, "sizes": []})
                 r["assigned"] += j.qty
                 r["sewn"] += job_sewn(j)
                 if s.size not in r["sizes"]:
                     r["sizes"].append(s.size)
-        return sorted(rows.values(), key=lambda r: -r["assigned"])
+            for e in s.entries.all():
+                key = (e.responsible_id, e.workers)
+                r = rows.setdefault(key, {"label": who(e) or "не указан", "assigned": 0,
+                                          "sewn": 0, "done": 0, "sizes": []})
+                r["done"] += e.qty
+                if s.size not in r["sizes"]:
+                    r["sizes"].append(s.size)
+        return sorted(rows.values(), key=lambda r: -(r["assigned"] + r["done"]))
 
     def get_materials(self, obj):
         """Ткань по заказу: метров всего и в среднем на штуку."""
@@ -210,17 +197,17 @@ class WorkOrderDetailSerializer(WorkOrderSerializer):
         for s in obj.sizes.all():
             for e in s.entries.all():
                 mats = ", ".join(f"{m.material} {_num(m.meters):g} м" for m in e.materials.all())
-                who = str(e.brigade) if e.brigade_id else ""
-                extra = " · ".join(x for x in (who, e.extra, mats, e.note) if x)
+                extra = " · ".join(x for x in (who(e), e.extra, mats, e.note) if x)
                 events.append({"date": e.date, "stamp": e.created_at, "stage": names.get(e.stage_id, ""),
                                "size": s.size, "text": f"{e.qty} шт" + (f" · {extra}" if extra else "")})
             for j in s.jobs.all():
+                label = who(j) or "без исполнителя"
                 events.append({"date": j.started, "stamp": j.created_at, "stage": names.get(j.stage_id, ""),
-                               "size": s.size, "text": f"выдано бригаде {j.brigade}: {j.qty} шт"})
+                               "size": s.size, "text": f"выдано в пошив · {label}: {j.qty} шт"})
                 for p in j.progress.all():
-                    label = "на упаковке" if p.ready >= 1 else f"готовность {int(p.ready * 100)}%"
+                    mark = "на упаковке" if p.ready >= 1 else f"готовность {int(p.ready * 100)}%"
                     events.append({"date": p.date, "stamp": None, "stage": names.get(j.stage_id, ""),
-                                   "size": s.size, "text": f"{j.brigade}: {label}"})
+                                   "size": s.size, "text": f"{label}: {mark}"})
         events.sort(key=lambda e: (e["date"], str(e["stamp"] or "")), reverse=True)
         for e in events:
             e.pop("stamp")
@@ -250,15 +237,15 @@ class StageEntrySerializer(serializers.ModelSerializer):
     materials = EntryMaterialSerializer(many=True, required=False)
     size_label = serializers.CharField(source="size.size", read_only=True)
     stage_name = serializers.CharField(source="stage.template.name", read_only=True)
-    brigade_label = serializers.SerializerMethodField()
+    who_label = serializers.SerializerMethodField()
     order = serializers.IntegerField(source="stage.order_id", read_only=True)
 
     class Meta:
         model = StageEntry
         fields = "__all__"
 
-    def get_brigade_label(self, obj):
-        return str(obj.brigade) if obj.brigade else None
+    def get_who_label(self, obj):
+        return who(obj) or None
 
     def validate_materials(self, value):
         clean, seen = [], set()
@@ -301,7 +288,7 @@ class SewingProgressSerializer(serializers.ModelSerializer):
 
 
 class SewingJobSerializer(serializers.ModelSerializer):
-    brigade_label = serializers.SerializerMethodField()
+    who_label = serializers.SerializerMethodField()
     size_label = serializers.CharField(source="size.size", read_only=True)
     ready = serializers.SerializerMethodField()
     sewn = serializers.SerializerMethodField()
@@ -311,8 +298,8 @@ class SewingJobSerializer(serializers.ModelSerializer):
         model = SewingJob
         fields = "__all__"
 
-    def get_brigade_label(self, obj):
-        return str(obj.brigade)
+    def get_who_label(self, obj):
+        return who(obj) or "не указан"
 
     def get_ready(self, obj):
         return _num(job_ready(obj))

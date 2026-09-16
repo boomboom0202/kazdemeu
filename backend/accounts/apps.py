@@ -14,7 +14,7 @@ class AccountsConfig(AppConfig):
             "contracts.ContractExpense", "contracts.ContractFile", "contracts.Comment",
             "workshop.WorkOrder", "workshop.WorkSize", "workshop.WorkOrderStage",
             "workshop.StageTemplate", "workshop.StageEntry", "workshop.SewingJob",
-            "workshop.SewingProgress", "workshop.Brigade",
+            "workshop.SewingProgress",
             "warehouse.Material", "warehouse.MaterialBatch", "warehouse.StockMovement",
             "warehouse.GoodsMovement", "warehouse.Supplier",
             "finance.AdminCategory", "finance.AdminExpense", "finance.OtherIncome",

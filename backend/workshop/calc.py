@@ -19,7 +19,8 @@ def with_details(qs):
     return qs.select_related("contract").prefetch_related(
         "stages__template",
         "sizes__entries__materials",
-        "sizes__jobs__progress", "sizes__jobs__brigade")
+        "sizes__jobs__progress", "sizes__jobs__responsible",
+        "sizes__entries__responsible")
 
 
 def job_ready(job):

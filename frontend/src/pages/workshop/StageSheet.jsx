@@ -11,7 +11,7 @@ const pct = (v) => (v >= 1 ? 'на упаковке' : `${Math.round(v * 100)}%`
  * Лист этапа — как лист «цех отчёт.xlsx».
  * Крой: блоки по дням — изделие, материал, размер, штук, метраж, м/шт.
  * Штучный этап (вышивка, чистка, упаковка): по дням — изделие, размер, штук.
- * Пошив (Тигин): бригада, изделие, размер, выдано и готовность по датам колонками.
+ * Пошив (Тигин): кто шьёт, изделие, размер, выдано и готовность по датам колонками.
  * Сверху — что по каждому заказу можно взять в работу на этом этапе.
  */
 export default function StageSheet({ user, onChange }) {
@@ -20,13 +20,14 @@ export default function StageSheet({ user, onChange }) {
   const mayWrite = canEdit(user, 'workshop.entries')
   const [data, setData] = useState(null)
   const [failed, setFailed] = useState(false)
-  const [brigades, setBrigades] = useState([])
+  const [people, setPeople] = useState([])
   const status = params.get('status') || 'in_work'
   const orderFilter = params.get('order') || ''
   const [dates, setDates] = useState({ from: '', to: '' })
   const [showFree, setShowFree] = useState(true)
 
-  const empty = { date: today(), order: orderFilter, size: '', qty: '', extra: '', note: '', brigade: '' }
+  const empty = { date: today(), order: orderFilter, size: '', qty: '', extra: '', note: '',
+    responsible: '', workers: '' }
   const [form, setForm] = useState(empty)
   const [mats, setMats] = useState([{ material: 'основа', meters: '' }])
   const [markDate, setMarkDate] = useState(today())
@@ -42,7 +43,9 @@ export default function StageSheet({ user, onChange }) {
   useEffect(() => { setData(null); load() }, [id, status, orderFilter, dates.from, dates.to])
   useEffect(() => { setForm(f => ({ ...f, order: orderFilter, size: '' })) }, [orderFilter, id])
   useEffect(() => {
-    api.get('/brigades/?page_size=500').then(r => setBrigades((r.data.results || []).filter(b => b.is_active))).catch(() => {})
+    // ответственный — сотрудник системы; кого он поставил на работу, пишут строкой ниже
+    api.get('/users/?page_size=200').then(r => setPeople((r.data.results || []).filter(u => u.is_active)))
+      .catch(() => {})
   }, [])
 
   const setParam = (k, v) => { const n = new URLSearchParams(params); v ? n.set(k, v) : n.delete(k); setParams(n) }
@@ -66,11 +69,13 @@ export default function StageSheet({ user, onChange }) {
 
   const submit = () => run(async () => {
     if (kind === 'sewing') {
-      await api.post('/sewing-jobs/', { stage: orderRow.stage, size: form.size, brigade: form.brigade, qty: form.qty, started: form.date })
+      await api.post('/sewing-jobs/', { stage: orderRow.stage, size: form.size, qty: form.qty,
+        responsible: form.responsible || null, workers: form.workers, started: form.date })
     } else {
       const materials = kind === 'cut' ? mats.filter(m => m.material.trim() && m.meters !== '') : []
       await api.post('/stage-entries/', { stage: orderRow.stage, size: form.size, date: form.date, qty: form.qty,
-        brigade: form.brigade || null, extra: form.extra, note: form.note, materials })
+        responsible: form.responsible || null, workers: form.workers,
+        extra: form.extra, note: form.note, materials })
     }
     setForm(f => ({ ...f, size: '', qty: '', extra: '', note: '' }))
     setMats([{ material: 'основа', meters: '' }])
@@ -102,7 +107,7 @@ export default function StageSheet({ user, onChange }) {
 
       {mayWrite && data.orders.length > 0 && (
         <div className="card stitch">
-          <h2>{kind === 'sewing' ? 'Выдать партию бригаде' : `Записать в «${t.name}»`}</h2>
+          <h2>{kind === 'sewing' ? 'Выдать партию в пошив' : `Записать в «${t.name}»`}</h2>
           <div className="formrow">
             <div><label className="f">{kind === 'sewing' ? 'Дата выдачи' : 'Дата'}</label>
               <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
@@ -118,11 +123,14 @@ export default function StageSheet({ user, onChange }) {
               </select></div>
             <div><label className="f">{kind === 'sewing' ? 'Выдано, шт' : 'Штук'}</label>
               <input type="number" min="1" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
-            <div><label className="f">{kind === 'sewing' ? 'Бригада' : 'Кто делал'}</label>
-              <select value={form.brigade} onChange={e => setForm({ ...form, brigade: e.target.value })}>
-                <option value="">{kind === 'sewing' ? '— выбрать —' : '— не указан —'}</option>
-                {brigades.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+            <div><label className="f">Ответственный</label>
+              <select value={form.responsible} onChange={e => setForm({ ...form, responsible: e.target.value })}>
+                <option value="">— не указан —</option>
+                {people.map(u => <option key={u.id} value={u.id}>{u.first_name || u.username}</option>)}
               </select></div>
+            <div><label className="f">{kind === 'sewing' ? 'Кто шьёт' : 'Кто делал'}</label>
+              <input value={form.workers} placeholder="Наср + 9, Акбар"
+                onChange={e => setForm({ ...form, workers: e.target.value })} /></div>
             {kind !== 'sewing' && t.extra_label && <div><label className="f">{t.extra_label}</label>
               <input value={form.extra} onChange={e => setForm({ ...form, extra: e.target.value })} /></div>}
             {kind !== 'sewing' && <div><label className="f">Примечание</label>
@@ -153,7 +161,7 @@ export default function StageSheet({ user, onChange }) {
             </div>
           )}
           <button className="btn" onClick={submit}
-            disabled={!orderRow || !form.size || !form.qty || (kind === 'sewing' && !form.brigade)}>
+            disabled={!orderRow || !form.size || !form.qty}>
             {kind === 'sewing' ? 'Выдать' : 'Записать'}</button>
         </div>
       )}
@@ -245,7 +253,7 @@ function EntriesGrid({ data, mayWrite, run }) {
                     {i === 0 && <td rowSpan={mats.length} className="num"><b>{e.qty}</b></td>}
                     {t.kind === 'cut' && <><td className="num">{m ? fmtD(m.meters) : ''}</td><td className="num">{m ? fmtD(m.per_unit) : ''}</td></>}
                     {t.kind !== 'cut' && t.extra_label && <td>{e.extra}</td>}
-                    {i === 0 && <td rowSpan={mats.length}>{e.brigade_label || <span className="muted">—</span>}</td>}
+                    {i === 0 && <td rowSpan={mats.length}>{e.who_label || <span className="muted">—</span>}</td>}
                     {i === 0 && <td rowSpan={mats.length}>{e.note}</td>}
                     {i === 0 && mayWrite && <td rowSpan={mats.length}>
                       <button className="btn small ghost" title="Удалить запись" onClick={() => confirm(`Удалить запись ${e.size} · ${e.qty} шт от ${dmy(e.date)}?`) && run(() => api.delete(`/stage-entries/${e.id}/`))}>✕</button>
@@ -261,14 +269,14 @@ function EntriesGrid({ data, mayWrite, run }) {
   )
 }
 
-/** Пошив: партии бригад, готовность по датам колонками, последняя колонка — отметить. */
+/** Пошив: партии по исполнителям, готовность по датам колонками, последняя колонка — отметить. */
 function SewingGrid({ data, mayWrite, markDate, setMarkDate, run }) {
   const groups = useMemo(() => {
     const out = []
     for (const j of data.jobs) {
       const last = out[out.length - 1]
-      if (last && last.brigade === j.brigade) last.items.push(j)
-      else out.push({ brigade: j.brigade, label: j.brigade_label, items: [j] })
+      if (last && last.label === j.who_label) last.items.push(j)
+      else out.push({ label: j.who_label, items: [j] })
     }
     return out
   }, [data.jobs])
@@ -277,19 +285,19 @@ function SewingGrid({ data, mayWrite, markDate, setMarkDate, run }) {
   return (
     <div className="card" style={{ padding: 0 }}>
       <div className="toolbar">
-        <b>Партии бригад и готовность по дням</b>
+        <b>Партии в пошиве и готовность по дням</b>
         {mayWrite && <span className="muted" style={{ marginLeft: 'auto' }}>Отмечать на дату:{' '}
           <input type="date" value={markDate} onChange={e => setMarkDate(e.target.value)} style={{ width: 'auto', display: 'inline-block' }} /></span>}
       </div>
       <div className="tablewrap"><table className="sheet grid">
         <thead><tr>
-          <th>Бригада</th><th>Изделие</th><th>Размер</th><th className="num">Шт</th>
+          <th>Кто шьёт</th><th>Изделие</th><th>Размер</th><th className="num">Шт</th>
           {data.dates.map(d => <th key={d} className="num date">{dm(d)}</th>)}
           <th className="num">Сшито</th><th>Выдано</th>
           {mayWrite && <><th>{dm(markDate)}</th><th /></>}
         </tr></thead>
         <tbody>
-          {groups.length === 0 && <tr><td colSpan={cols} className="muted">Бригадам ещё ничего не выдавали.</td></tr>}
+          {groups.length === 0 && <tr><td colSpan={cols} className="muted">В пошив ещё ничего не выдавали.</td></tr>}
           {groups.map(g => g.items.map((j, i) => (
             <tr key={j.id} className={i === 0 ? 'first' : 'cont'}>
               {i === 0 && <td rowSpan={g.items.length}><b>{g.label}</b></td>}

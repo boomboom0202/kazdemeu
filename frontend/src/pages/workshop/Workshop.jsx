@@ -4,7 +4,7 @@ import { api, can, canAny } from '../../api'
 import Orders from './Orders'
 import OrderCard from './OrderCard'
 import StageSheet from './StageSheet'
-import Brigades from './Brigades'
+import Workers from './Workers'
 import StageSettings from './StageSettings'
 
 /**
@@ -33,7 +33,7 @@ export default function Workshop({ user }) {
             {t.name}{t.waiting > 0 && <span className="tabcount" title="ждут этапа, шт">{t.waiting}</span>}
           </NavLink>
         ))}
-        {can(user, 'workshop.brigades') && <NavLink to="/workshop/brigades">Бригады</NavLink>}
+        {seeEntries && <NavLink to="/workshop/workers">Исполнители</NavLink>}
         {can(user, 'workshop.stages') && <NavLink to="/workshop/settings">Настройка этапов</NavLink>}
       </nav>
       {!canAny(user, 'workshop') && <p className="muted">Цех вам не открыт.</p>}
@@ -41,7 +41,7 @@ export default function Workshop({ user }) {
         <Route index element={<Orders user={user} overview={overview} />} />
         <Route path="orders/:id" element={<OrderCard user={user} onChange={reload} />} />
         <Route path="stages/:id" element={<StageSheet user={user} onChange={reload} />} />
-        <Route path="brigades" element={<Brigades user={user} />} />
+        <Route path="workers" element={<Workers />} />
         <Route path="settings" element={<StageSettings user={user} onChange={reload} />} />
       </Routes>
     </div>

@@ -134,7 +134,7 @@ export default function OrderCard({ user, onChange }) {
       <div className="tabs">
         {mayEdit && <button className={tab === 'sizes' ? 'active' : ''} onClick={() => setTab('sizes')}>Размеры</button>}
         {mayEdit && <button className={tab === 'route' ? 'active' : ''} onClick={() => setTab('route')}>Этапы заказа</button>}
-        <button className={tab === 'brigades' ? 'active' : ''} onClick={() => setTab('brigades')}>Бригады</button>
+        <button className={tab === 'workers' ? 'active' : ''} onClick={() => setTab('workers')}>Исполнители</button>
         <button className={tab === 'fabric' ? 'active' : ''} onClick={() => setTab('fabric')}>Ткань</button>
       </div>
 
@@ -179,16 +179,18 @@ export default function OrderCard({ user, onChange }) {
         </div>
       )}
 
-      {tab === 'brigades' && (
+      {tab === 'workers' && (
         <div className="card" style={{ padding: 0 }}>
           <div className="tablewrap"><table>
-            <thead><tr><th>Бригада</th><th className="num">Выдано</th><th className="num">Сшито</th></tr></thead>
+            <thead><tr><th>Кто работал</th><th className="num">Сделано, шт</th>
+              <th className="num">Выдано в пошив</th><th className="num">Сшито</th></tr></thead>
             <tbody>
-              {o.brigades.length === 0 && <tr><td colSpan={3} className="muted">Пока никому не выдавали.</td></tr>}
-              {o.brigades.map(b => (
-                <tr key={b.brigade}>
+              {o.workers.length === 0 && <tr><td colSpan={4} className="muted">По заказу ещё ничего не записано.</td></tr>}
+              {o.workers.map((b, i) => (
+                <tr key={i}>
                   <td><b>{b.label}</b><div className="muted">{b.sizes.join(', ')}</div></td>
-                  <td className="num">{b.assigned}</td><td className="num">{b.sewn}</td>
+                  <td className="num">{b.done || ''}</td>
+                  <td className="num">{b.assigned || ''}</td><td className="num">{b.sewn || ''}</td>
                 </tr>
               ))}
             </tbody>

@@ -20,7 +20,7 @@ class Command(BaseCommand):
         from finance.models import AdminCategory, AdminExpense, OtherIncome
         from tenders.models import Tender, Platform, OwnCompany
         from warehouse.models import Supplier, Material, MaterialBatch, StockMovement
-        from workshop.models import (Brigade, WorkOrder, StageTemplate, StageEntry, EntryMaterial,
+        from workshop.models import (WorkOrder, StageTemplate, StageEntry, EntryMaterial,
                                      SewingJob, SewingProgress, ensure_default_stages)
         from workshop.calc import apply_sizes, parse_sizes, set_route
 
@@ -35,7 +35,7 @@ class Command(BaseCommand):
 
         demo_user("admin", "admin12345", role="admin", is_staff=True, is_superuser=True, first_name="Админ")
         manager = demo_user("aigerim", "demo12345", role="manager", first_name="Айгерим")
-        demo_user("saule", "demo12345", role="technologist", first_name="Сауле")
+        saule = demo_user("saule", "demo12345", role="technologist", first_name="Сауле")
         demo_user("marat", "demo12345", role="accountant", first_name="Марат")
         demo_user("bolat", "demo12345", role="worker", first_name="Болат")
         demo_user("dana", "demo12345", role="warehouse", first_name="Дана")
@@ -94,8 +94,7 @@ class Command(BaseCommand):
                                text="Заказчик просит логотип по новому брендбуку — уточнить до кроя.")
 
         # ── цех ──
-        nasr = Brigade.objects.create(leader="Наср", people=9)
-        akbar = Brigade.objects.create(leader="Акбар", people=2)
+        sewers = ["Наср + 9", "Акбар + 2"]
         order = WorkOrder.objects.create(product="Куртка АУП", contract=c1, client=pav.name,
                                          deadline=c1.deadline)
         set_route(order, StageTemplate.objects.filter(is_active=True).values_list("id", flat=True))
@@ -104,8 +103,9 @@ class Command(BaseCommand):
         stages = {s.template.name: s for s in order.stages.select_related("template")}
         sizes = {s.size: s for s in order.sizes.all()}
 
-        def entry(stage, size, days_ago, qty, extra="", **mats):
+        def entry(stage, size, days_ago, qty, extra="", workers="Ербол", **mats):
             e = StageEntry.objects.create(stage=stages[stage], size=sizes[size], qty=qty, extra=extra,
+                                          responsible=saule, workers=workers,
                                           date=today - timedelta(days=days_ago))
             for k, v in mats.items():
                 EntryMaterial.objects.create(entry=e, material=k, meters=Decimal(str(v)))
@@ -115,9 +115,10 @@ class Command(BaseCommand):
         entry("Крой", "48/158", 17, 25, основа=61.25, подклад=73.75)
         entry("Вышивка", "44/170", 16, 35, "карман")
         entry("Вышивка", "46/176", 15, 45, "полный")
-        for size, brigade, qty, marks in [("44/170", nasr, 35, [(14, .3), (10, .7), (6, 1)]),
-                                          ("46/176", akbar, 45, [(12, .2), (6, .5)])]:
-            j = SewingJob.objects.create(stage=stages["Тигин"], size=sizes[size], brigade=brigade, qty=qty,
+        for size, workers, qty, marks in [("44/170", sewers[0], 35, [(14, .3), (10, .7), (6, 1)]),
+                                          ("46/176", sewers[1], 45, [(12, .2), (6, .5)])]:
+            j = SewingJob.objects.create(stage=stages["Тигин"], size=sizes[size], workers=workers,
+                                         responsible=saule, qty=qty,
                                          started=today - timedelta(days=15))
             for d, r in marks:
                 SewingProgress.objects.create(job=j, date=today - timedelta(days=d), ready=Decimal(str(r)))

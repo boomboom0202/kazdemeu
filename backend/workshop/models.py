@@ -10,6 +10,7 @@
 размер, по которому уже работали, нельзя удалить вместе с историей.
 """
 from decimal import Decimal
+from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
@@ -59,19 +60,11 @@ def ensure_default_stages():
                                      position=pos, is_active=active)
 
 
-class Brigade(models.Model):
-    """Бригада пошива. В отчёте цеха пишут «Наср + 9 бала» — бригадир
-    и сколько людей с ним; так и храним."""
-    leader = models.CharField("Бригадир", max_length=100)
-    people = models.PositiveSmallIntegerField("Людей с бригадиром", default=0)
-    note = models.CharField("Примечание", max_length=255, blank=True)
-    is_active = models.BooleanField("Работает", default=True)
-
-    class Meta:
-        ordering = ["-is_active", "leader"]
-
-    def __str__(self):
-        return f"{self.leader} + {self.people}" if self.people else self.leader
+# За работу отвечает сотрудник системы, а кто её делал руками — пишут строкой:
+# в цехе это бригада или несколько имён, и своей учётной записи у них нет.
+RESPONSIBLE = dict(to=settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                   verbose_name="Ответственный")
+WORKERS_HELP = "Кто делал руками: «Наср + 9», «Акбар, Гульмира». Своих учётных записей у них нет"
 
 
 class WorkOrder(models.Model):
@@ -131,9 +124,8 @@ class StageEntry(models.Model):
     """Запись этапа за день: сколько штук размера прошло этап."""
     stage = models.ForeignKey(WorkOrderStage, on_delete=models.PROTECT, related_name="entries")
     size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="entries")
-    brigade = models.ForeignKey(Brigade, on_delete=models.PROTECT, related_name="entries",
-                                null=True, blank=True, verbose_name="Кто делал",
-                                help_text="Бригада или человек из справочника бригад")
+    responsible = models.ForeignKey(related_name="stage_entries", **RESPONSIBLE)
+    workers = models.CharField("Кто делал", max_length=255, blank=True, help_text=WORKERS_HELP)
     date = models.DateField("Дата", default=timezone.localdate)
     qty = models.PositiveIntegerField("Штук", validators=AT_LEAST_ONE)
     extra = models.CharField("Доп. колонка", max_length=60, blank=True)
@@ -162,10 +154,12 @@ class EntryMaterial(models.Model):
 
 
 class SewingJob(models.Model):
-    """Партия размера, выданная бригаде на этапе пошива."""
+    """Партия размера, выданная в пошив: за неё отвечает сотрудник,
+    а шьют те, кого вписали в «кто шьёт»."""
     stage = models.ForeignKey(WorkOrderStage, on_delete=models.PROTECT, related_name="jobs")
     size = models.ForeignKey(WorkSize, on_delete=models.PROTECT, related_name="jobs")
-    brigade = models.ForeignKey(Brigade, on_delete=models.PROTECT, related_name="jobs")
+    responsible = models.ForeignKey(related_name="sewing_jobs", **RESPONSIBLE)
+    workers = models.CharField("Кто шьёт", max_length=255, blank=True, help_text=WORKERS_HELP)
     qty = models.PositiveIntegerField("Выдано, шт", validators=AT_LEAST_ONE)
     started = models.DateField("Выдано", default=timezone.localdate)
     created_at = models.DateTimeField(auto_now_add=True)

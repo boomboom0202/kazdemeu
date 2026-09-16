@@ -106,7 +106,8 @@ const pick = async (nth, text) => {
   const value = await sel.evaluate((s, text) => [...s.options].find(o => o.text.includes(text))?.value, text)
   await sel.selectOption(value); await p.waitForTimeout(250)
 }
-await pick(0, 'Куртка АУП'); await pick(1, '54/176'); await pick(2, 'Ербол')
+await pick(0, 'Куртка АУП'); await pick(1, '54/176'); await pick(2, 'Сауле')
+await p.fill('.card.stitch input[placeholder*="Наср"]', 'Ербол')
 await p.fill('.card.stitch input[type=number] >> nth=0', '10')
 await p.fill('.card.stitch input[placeholder="метров"]', '24.3')
 await p.click('.card.stitch button:has-text("+ материал")')
@@ -126,7 +127,7 @@ await part('.card:has(h2:text-is("Размер × этап"))', '16-razmer-etap'
 await p.click('table.sheet tbody tr.clickable >> nth=1'); await p.waitForSelector('.drill'); await p.waitForTimeout(300);
 await part('.card:has(h2:text-is("Размер × этап"))', '17-proval-v-razmer', 900)
 await p.click('.linktabs a:has-text("Настройка этапов")'); await settle(); await part('.card:has(table)', '18-nastroyka-etapov')
-await p.click('.linktabs a:has-text("Бригады")'); await settle(); await part('.card:has(table)', '19-brigady')
+await p.click('.linktabs a:has-text("Исполнители")'); await settle(); await part('.card:has(table)', '19-ispolniteli')
 
 await nav('Склад');
 await p.click('.tabs button:has-text("Выдача в цех")'); await settle(); await part('.card.stitch', '20-vydacha-v-ceh')

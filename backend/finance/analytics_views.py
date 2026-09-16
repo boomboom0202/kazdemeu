@@ -111,10 +111,12 @@ def overview(request):
         for r in rows:
             key = r["w"].isoformat()
             weekly.setdefault(key, {"week": key})[r["stage__template__name"]] = r["q"]
-        brigades = {}
+        crews = {}
         from workshop.models import SewingJob
-        for j in SewingJob.objects.select_related("brigade").prefetch_related("progress"):
-            b = brigades.setdefault(str(j.brigade), {"brigade": str(j.brigade), "sewn": 0, "in_work": 0})
+        from workshop.serializers import who
+        for j in SewingJob.objects.select_related("responsible").prefetch_related("progress"):
+            label = who(j) or "не указан"
+            b = crews.setdefault(label, {"who": label, "sewn": 0, "in_work": 0})
             s = job_sewn(j)
             b["sewn"] += s
             b["in_work"] += j.qty - s
@@ -124,7 +126,7 @@ def overview(request):
             "stages": [s for s in per_stage.values() if s["done"] or s["in_work"]],
             "late": sorted(late, key=lambda r: -r["days"]),
             "weekly": list(weekly.values()),
-            "brigades": sorted(brigades.values(), key=lambda b: -b["sewn"])[:10],
+            "crews": sorted(crews.values(), key=lambda b: -b["sewn"])[:10],
         }
 
     if can_read(user, "warehouse.materials"):
