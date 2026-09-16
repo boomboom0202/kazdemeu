@@ -141,14 +141,15 @@ export default function OrderCard({ user, onChange }) {
 
       {tab === 'sizes' && mayEdit && (
         <div className="card">
-          <SizesInput value={sizesText} onChange={setSizesText} orderId={o.id} rows={5}
-            onValidity={(ok, n) => setSizesOk(ok && n > 0)} />
+          <SizesInput key={o.sizes.map(z => `${z.id}:${z.planned}`).join(',')}
+            onChange={setSizesText} existing={o.sizes} onValidity={(ok, n) => setSizesOk(ok && n > 0)} />
           <div style={{ margin: '10px 0 14px' }}>
             <button className="btn" disabled={!sizesOk} onClick={() => run(async () => {
               const { data } = await api.post(`/work-orders/${id}/sizes_bulk/`, { text: sizesText })
-              setSizesText(''); alert(`Размеры: добавлено ${data.report.added}, обновлено ${data.report.updated}.`)
-            })}>Добавить</button>
-            <span className="muted" style={{ marginLeft: 10 }}>Если размер уже есть — у него обновится план.</span>
+              alert(`Размеры: добавлено ${data.report.added}, обновлено ${data.report.updated}.`)
+            })}>Сохранить размеры</button>
+            <span className="muted" style={{ marginLeft: 10 }}>В сетке — то, что уже в заказе.
+              Убрать размер совсем — кнопкой «Удл.» в таблице ниже.</span>
           </div>
           {o.sizes.length > 0 && <div className="tablewrap"><table>
             <thead><tr><th>Размер</th><th className="num">План, шт</th><th /></tr></thead>

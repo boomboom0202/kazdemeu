@@ -15,7 +15,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
     deadline: contract?.deadline || '', sewing_rate: '', sizes_text: '',
   })
   const [chosen, setChosen] = useState([])
-  const [sizesOk, setSizesOk] = useState(true)
+  const [sizesOk, setSizesOk] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -68,7 +68,8 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
           <input type="number" value={form.sewing_rate} placeholder="3000" onChange={e => setForm({ ...form, sewing_rate: e.target.value })} /></div>
       </div>
 
-      <SizesInput value={form.sizes_text} onChange={v => setForm(f => ({ ...f, sizes_text: v }))}
+      <label className="f">Размеры</label>
+      <SizesInput onChange={v => setForm(f => ({ ...f, sizes_text: v }))}
         contractQty={contractQty} onValidity={ok => setSizesOk(ok)} />
 
       <div style={{ margin: '12px 0 4px' }}>

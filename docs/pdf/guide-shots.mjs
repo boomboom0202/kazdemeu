@@ -87,8 +87,13 @@ await part('.card:has(h2:text-is("Куда ушли деньги"))', '06-kuda-u
 await p.click('.tabs button:has-text("Оплаты")'); await settle(); await part('.card:has(table.sheet)', '07-oplaty')
 await p.click('.tabs button:has-text("Цех")'); await settle();
 await p.click('button:has-text("Запустить в цех")'); await settle();
-await p.fill('textarea', '54/176 - 27 шт\n54-182 - 35 шт\n58.182 - 29\n56-58/170-176 116');
-await p.waitForSelector('.sizecheck table'); await settle();
+// сетка размеров: строки — размеры с 44 через один, колонки — роста со 158 через 6 см
+await p.waitForSelector('.sizegrid table');
+for (const [chest, height, qty] of [[48, 170, 12], [50, 176, 20], [52, 176, 35],
+                                    [54, 176, 27], [54, 182, 35], [56, 182, 29]])
+  await p.locator('.sizegrid tbody tr').nth((chest - 44) / 2)
+    .locator('.cellin').nth((height - 158) / 6).fill(String(qty));
+await settle();
 await part('.card.stitch:has(h2:text-is("Запустить в цех"))', '08-zapusk-v-ceh')
 await p.click('button:has-text("Отмена")'); await settle();
 await part('.card:has(.toolbar b:text-is("Заказы цеха по договору"))', '09-ceh-po-dogovoru')
