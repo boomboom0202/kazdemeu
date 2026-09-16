@@ -44,7 +44,10 @@ class Command(BaseCommand):
                 or User.objects.filter(role="admin", is_active=True).first())
         if not user:
             raise CommandError("Нет администратора — некому заводить данные.")
-        self.client = APIClient()
+        # на сервере ALLOWED_HOSTS не знает служебный «testserver» — берём разрешённый хост
+        from django.conf import settings
+        hosts = [h for h in settings.ALLOWED_HOSTS if h != "*"]
+        self.client = APIClient(HTTP_HOST=hosts[0].lstrip(".") if hosts else "testserver")
         self.client.force_authenticate(user)
         self.calls = 0
         self.today = timezone.localdate()
