@@ -87,6 +87,14 @@ export default function ContractDetail({ user }) {
           <div className="l">прибыль{c.amount > 0 ? ` · ${Math.round(m.profit / c.amount * 100)}%` : ''}</div></div>}
         {m.balance !== null && <div className={'kpi ' + (m.balance < 0 ? 'warn' : '')}><div className="v">{fmt(m.balance)}</div><div className="l">остаток: пришло − потрачено</div></div>}
       </div>
+      {m.net_profit !== null && (
+        <p className="muted" style={{ margin: '-6px 0 16px' }}>
+          Прибыль выше — без окладов и аренды. С их учётом: доля административных расходов{' '}
+          <b>{fmt(m.admin_share)}</b> ₸, чистая прибыль{' '}
+          <b className={m.net_profit < 0 ? 'neg' : ''}>{fmt(m.net_profit)}</b> ₸.
+          Административные расходы месяца делятся между договорами в работе по сумме договора.
+        </p>
+      )}
 
       <div className="tabs">
         {tabs.map(([k, label]) => <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>)}

@@ -67,6 +67,16 @@ class ContractViewSet(Base):
             qs = qs.prefetch_related("files__uploaded_by", "comments__author")
         return qs
 
+    def get_serializer_context(self):
+        """Доли административных расходов считаются один раз на запрос —
+        иначе реестр пересчитывал бы их на каждую строку."""
+        ctx = super().get_serializer_context()
+        user = self.request.user
+        if can_read(user, "contracts.expenses") and can_read(user, "finance.admin"):
+            from finance.allocation import admin_shares
+            ctx["admin_shares"] = admin_shares()
+        return ctx
+
     @action(detail=True, methods=["post"])
     def set_status(self, request, pk=None):
         """Смена статуса по цепочке."""
@@ -87,11 +97,12 @@ class ContractViewSet(Base):
     def summary(self, request):
         """Итог по отобранным договорам — строка «Итого» под реестром."""
         rows = list(self.filter_queryset(self.get_queryset()))
+        shares = self.get_serializer_context().get("admin_shares")
         total = {"count": len(rows), "amount": 0.0}
         sums = {}
         for c in rows:
             total["amount"] += float(c.amount)
-            for k, v in contract_money(c, request.user).items():
+            for k, v in contract_money(c, request.user, shares).items():
                 if v is not None:
                     sums[k] = sums.get(k, 0.0) + v
                 else:
@@ -108,8 +119,9 @@ class ContractViewSet(Base):
         ws = wb.active
         ws.title = "Договора"
         ws.append(REGISTRY_EXPORT)
+        shares = self.get_serializer_context().get("admin_shares")
         for c in self.filter_queryset(self.get_queryset()):
-            m = contract_money(c, request.user)
+            m = contract_money(c, request.user, shares)
             ws.append([c.purchase_no or c.number, c.own_company.name if c.own_company else "",
                        c.platform, c.customer.name, c.title,
                        float(c.qty) if c.qty is not None else None,

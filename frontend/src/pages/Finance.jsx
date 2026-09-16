@@ -120,6 +120,8 @@ function Summary() {
       <div className="card" style={{ padding: 0 }}>
         <div className="toolbar">
           <b>По договорам</b>
+          <span className="muted">«адм. доля» — часть окладов и аренды: расходы месяца делятся
+            между договорами в работе по сумме договора</span>
           <label className="check"><input type="checkbox" checked={onlyMinus} onChange={e => setOnlyMinus(e.target.checked)} />только в минусе ({d.minus_count})</label>
           <select style={{ width: 'auto', marginLeft: 'auto' }} value={sort} onChange={e => setSort(e.target.value)}>
             <option value="balance">сначала худший остаток</option>
@@ -128,7 +130,9 @@ function Summary() {
           </select>
         </div>
         <div className="tablewrap"><table className="sheet">
-          <thead><tr><th>Закупка</th><th>Заказчик · предмет</th><th>Статус</th><th className="num">Сумма</th><th className="num">Оплачено</th><th className="num">Долг</th><th className="num">Расходы</th><th className="num">Прибыль</th><th className="num">Остаток</th></tr></thead>
+          <thead><tr><th>Закупка</th><th>Заказчик · предмет</th><th>Статус</th><th className="num">Сумма</th><th className="num">Оплачено</th><th className="num">Долг</th><th className="num">Расходы</th><th className="num">Прибыль</th>
+            <th className="num">Адм. доля</th><th className="num">Чистая прибыль</th>
+            <th className="num">Остаток</th></tr></thead>
           <tbody>
             {rows.map(c => (
               <tr key={c.id}>
@@ -138,6 +142,8 @@ function Summary() {
                 <td className="num">{fmt(c.amount)}</td><td className="num">{fmt(c.paid)}</td><td className="num">{fmt(c.debt)}</td>
                 <td className="num">{fmt(c.expenses)}</td>
                 <td className={'num ' + (c.profit < 0 ? 'neg' : '')}>{fmt(c.profit)}</td>
+                <td className="num muted">{c.admin_share ? fmt(c.admin_share) : ''}</td>
+                <td className={'num ' + (c.net_profit < 0 ? 'neg' : '')}>{fmt(c.net_profit)}</td>
                 <td className={'num ' + (c.expenses > 0 && c.balance < 0 ? 'neg' : '')}>{fmt(c.balance)}</td>
               </tr>
             ))}

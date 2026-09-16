@@ -156,11 +156,14 @@ def build_summary():
 
     contracts = list(Contract.objects.exclude(status=Contract.Status.CANCELLED)
                      .select_related("customer").prefetch_related("payments", "expenses"))
+    from .allocation import admin_shares
+    shares = admin_shares(contracts)
     rows = []
     tot = {"amount": ZERO, "paid": ZERO, "expenses": ZERO}
     minus = 0
     for c in contracts:
         paid, spent = c.paid_amount, c.expenses_total
+        share = shares.get(c.id, ZERO)
         tot["amount"] += c.amount
         tot["paid"] += paid
         tot["expenses"] += spent
@@ -170,7 +173,8 @@ def build_summary():
                      "title": c.title, "status": c.status, "status_display": c.get_status_display(),
                      "amount": _f(c.amount), "paid": _f(paid), "expenses": _f(spent),
                      "profit": _f(c.amount - spent), "balance": _f(paid - spent),
-                     "debt": _f(max(c.amount - paid, ZERO))})
+                     "debt": _f(max(c.amount - paid, ZERO)),
+                     "admin_share": _f(share), "net_profit": _f(c.amount - spent - share)})
 
     active = ContractPayment.objects.exclude(contract__status=Contract.Status.CANCELLED)
     spent_qs = ContractExpense.objects.exclude(contract__status=Contract.Status.CANCELLED)

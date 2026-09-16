@@ -70,19 +70,32 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = ["author"]
 
 
-def contract_money(contract, user):
+def contract_money(contract, user, shares=None):
     """Деньги договора — только в той части, на которую у человека есть право:
-    технолог видит реестр, но не видит оплат и расходов."""
+    технолог видит реестр, но не видит оплат и расходов.
+
+    shares — готовые доли административных расходов по договорам: в списке
+    они считаются один раз на запрос, иначе на каждую строку заново.
+    """
     see_pay = can_read(user, "contracts.payments")
     see_exp = can_read(user, "contracts.expenses")
+    see_admin = see_exp and can_read(user, "finance.admin")
     paid = contract.paid_amount if see_pay else None
     spent = contract.expenses_total if see_exp else None
+    if see_admin:
+        if shares is None:
+            from finance.allocation import admin_shares
+            shares = admin_shares()
+        share = shares.get(contract.id, Decimal(0))
     return {
         "paid": _f(paid) if see_pay else None,
         "debt": _f(max(contract.amount - paid, Decimal(0))) if see_pay else None,
         "expenses": _f(spent) if see_exp else None,
         "profit": _f(contract.amount - spent) if see_exp else None,
         "balance": _f(paid - spent) if (see_pay and see_exp) else None,
+        # доля окладов, аренды и налогов и прибыль с их учётом
+        "admin_share": _f(share) if see_admin else None,
+        "net_profit": _f(contract.amount - spent - share) if see_admin else None,
     }
 
 
@@ -99,7 +112,7 @@ class ContractSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_money(self, obj):
-        return contract_money(obj, _user(self.context))
+        return contract_money(obj, _user(self.context), self.context.get("admin_shares"))
 
     def validate_status(self, value):
         # При заведении договора статус любой: в систему вносят и те, что
