@@ -64,7 +64,11 @@ class UserViewSet(viewsets.ModelViewSet):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me(request):
-    return Response(UserSerializer(request.user).data)
+    from django.conf import settings
+    data = UserSerializer(request.user).data
+    # страница ассистента сразу показывает, подключён ли он, а не после первого вопроса
+    data["ai_enabled"] = bool(getattr(settings, "ANTHROPIC_API_KEY", ""))
+    return Response(data)
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):

@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react'
 import { api } from '../api'
 
-export default function Chat() {
+export default function Chat({ user }) {
+  const connected = user?.ai_enabled !== false
   const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Здравствуйте! Я отвечаю на вопросы по базе: тендеры, договоры с расходами, цех по этапам, склад и финансы. Например: «Какой договор в минусе?» или «Сколько сшито по Куртке АУП?» В режиме «Тендер» подготовлю ценовое предложение по похожим договорам.' }])
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('chat')
@@ -25,7 +26,7 @@ export default function Chat() {
       }
       setMsgs(m => [...m, { role: 'assistant', content: reply }])
     } catch (e) {
-      setMsgs(m => [...m, { role: 'assistant', content: 'Ошибка: ' + (e.response?.data?.detail || 'сервер не ответил') }])
+      setMsgs(m => [...m, { role: 'assistant', content: e.response?.data?.detail || 'Сервер не ответил. Попробуйте ещё раз.' }])
     } finally {
       setBusy(false)
       setTimeout(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), 50)
@@ -41,6 +42,8 @@ export default function Chat() {
           <button className={mode === 'tender' ? 'active' : ''} onClick={() => setMode('tender')}>Тендер: ценовое предложение</button>
         </div>
       </div>
+      {!connected && <div className="ro-note"><b>AI-ассистент не подключён.</b>&nbsp;Чтобы он заработал,
+        администратору нужно добавить на сервер ключ Anthropic. Остальная система работает без него.</div>}
       <div className="chat">
         <div className="msgs">
           {msgs.map((m, i) => <div key={i} className={`msg ${m.role === 'user' ? 'user' : 'ai'}`}>{m.content}</div>)}
@@ -50,9 +53,9 @@ export default function Chat() {
         <div className="inputrow">
           <input
             placeholder={mode === 'tender' ? 'Опишите лот тендера: «300 мед. халатов, бязь, с логотипом»...' : 'Напишите ваш вопрос...'}
-            value={input} onChange={e => setInput(e.target.value)}
+            value={input} onChange={e => setInput(e.target.value)} disabled={!connected}
             onKeyDown={e => e.key === 'Enter' && send()} />
-          <button className="btn orange" onClick={send} disabled={busy}>Отправить</button>
+          <button className="btn orange" onClick={send} disabled={busy || !connected}>Отправить</button>
         </div>
       </div>
     </div>

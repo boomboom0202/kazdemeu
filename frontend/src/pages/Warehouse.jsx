@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, fmt, fmtD, apiError, can, canEdit, today, dmy } from '../api'
+import { api, fmt, fmtD, apiError, can, canEdit, today, dmy, pickOrCreate } from '../api'
 
 // У каждой вкладки свой ключ доступа
 const TABS = [
@@ -40,8 +40,8 @@ export default function Warehouse({ user }) {
       <div className="tabs">
         {visible.map(([t, , label]) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label}</button>)}
       </div>
-      {tab === 'materials' && <Materials materials={materials} suppliers={suppliers} reload={loadMaterials} />}
-      {tab === 'receipts' && <Receipts materials={materials} suppliers={suppliers} reload={loadMaterials} />}
+      {tab === 'materials' && <Materials materials={materials} suppliers={suppliers} setSuppliers={setSuppliers} reload={loadMaterials} />}
+      {tab === 'receipts' && <Receipts materials={materials} suppliers={suppliers} setSuppliers={setSuppliers} reload={loadMaterials} />}
       {tab === 'issues' && <Issues materials={materials} orders={orders} reload={loadMaterials} />}
       {tab === 'goods' && <Goods user={user} />}
       {tab === 'suppliers' && <Suppliers suppliers={suppliers} reload={loadSuppliers} />}
@@ -49,14 +49,16 @@ export default function Warehouse({ user }) {
   )
 }
 
-function Materials({ materials, suppliers, reload }) {
-  const empty = { name: '', sku: '', unit: 'м', min_stock: '', default_supplier: '' }
+function Materials({ materials, suppliers, setSuppliers, reload }) {
+  const empty = { name: '', sku: '', unit: 'м', min_stock: '', supplier_name: '' }
   const [form, setForm] = useState(empty)
   const [editId, setEditId] = useState(null)
   const [show, setShow] = useState(false)
   const save = async () => {
-    const body = { ...form, min_stock: form.min_stock || 0, default_supplier: form.default_supplier || null }
     try {
+      const { supplier_name, ...rest } = form
+      const body = { ...rest, min_stock: form.min_stock || 0,
+        default_supplier: await pickOrCreate(supplier_name, suppliers, '/suppliers/', setSuppliers) }
       if (editId) await api.patch(`/materials/${editId}/`, body)
       else await api.post('/materials/', body)
       setForm(empty); setEditId(null); setShow(false); reload()
@@ -78,9 +80,9 @@ function Materials({ materials, suppliers, reload }) {
             <div><label className="f">Ед. изм.</label><input value={form.unit} placeholder="м, шт, кг" onChange={e => setForm({ ...form, unit: e.target.value })} /></div>
             <div><label className="f">Мин. остаток</label><input type="number" value={form.min_stock} onChange={e => setForm({ ...form, min_stock: e.target.value })} /></div>
             <div><label className="f">Поставщик</label>
-              <select value={form.default_supplier} onChange={e => setForm({ ...form, default_supplier: e.target.value })}>
-                <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select></div>
+              <input list="wh-suppliers" value={form.supplier_name} placeholder="выбрать или вписать"
+                onChange={e => setForm({ ...form, supplier_name: e.target.value })} />
+              <datalist id="wh-suppliers">{suppliers.map(s => <option key={s.id} value={s.name} />)}</datalist></div>
             <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={save} disabled={!form.name}>Сохранить</button></div>
           </div>
           <p className="muted">Когда остаток опустится ниже минимума, придёт уведомление.</p>
@@ -100,7 +102,7 @@ function Materials({ materials, suppliers, reload }) {
                 <td>{m.default_supplier_name || '—'}</td>
                 <td>{m.low_stock ? <span className="pill low">мало</span> : <span className="pill ok">хватает</span>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn small ghost" onClick={() => { setEditId(m.id); setShow(true); setForm({ name: m.name, sku: m.sku, unit: m.unit, min_stock: m.min_stock, default_supplier: m.default_supplier || '' }) }}>Изм.</button>{' '}
+                  <button className="btn small ghost" onClick={() => { setEditId(m.id); setShow(true); setForm({ name: m.name, sku: m.sku, unit: m.unit, min_stock: m.min_stock, supplier_name: m.default_supplier_name || '' }) }}>Изм.</button>{' '}
                   <button className="btn small ghost" onClick={async () => { if (!confirm(`Удалить материал «${m.name}»? С ним удалится история движений.`)) return
                     try { await api.delete(`/materials/${m.id}/`); reload() } catch (e) { alert(apiError(e)) } }}>Удл.</button>
                 </td>
@@ -113,14 +115,16 @@ function Materials({ materials, suppliers, reload }) {
   )
 }
 
-function Receipts({ materials, suppliers, reload }) {
+function Receipts({ materials, suppliers, setSuppliers, reload }) {
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState({ material: '', supplier: '', qty: '', unit_price: '', batch_no: '', received_at: today() })
+  const [form, setForm] = useState({ material: '', supplier_name: '', qty: '', unit_price: '', batch_no: '', received_at: today() })
   const load = () => api.get('/material-batches/?page_size=1000').then(r => setRows(r.data.results || []))
   useEffect(() => { load() }, [])
   const add = async () => {
     try {
-      await api.post('/material-batches/', { ...form, supplier: form.supplier || null, unit_price: form.unit_price || 0 })
+      const { supplier_name, ...rest } = form
+      await api.post('/material-batches/', { ...rest, unit_price: form.unit_price || 0,
+        supplier: await pickOrCreate(supplier_name, suppliers, '/suppliers/', setSuppliers) })
       setForm({ ...form, qty: '', unit_price: '', batch_no: '' }); load(); reload()
     } catch (e) { alert(apiError(e)) }
   }
@@ -134,15 +138,16 @@ function Receipts({ materials, suppliers, reload }) {
               <option value="">—</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select></div>
           <div><label className="f">Поставщик</label>
-            <select value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })}>
-              <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select></div>
+            <input list="wh-suppliers-in" value={form.supplier_name} placeholder="выбрать или вписать"
+              onChange={e => setForm({ ...form, supplier_name: e.target.value })} />
+            <datalist id="wh-suppliers-in">{suppliers.map(s => <option key={s.id} value={s.name} />)}</datalist></div>
           <div><label className="f">Кол-во</label><input type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></div>
           <div><label className="f">Цена за ед.</label><input type="number" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} /></div>
           <div><label className="f">Партия №</label><input value={form.batch_no} onChange={e => setForm({ ...form, batch_no: e.target.value })} /></div>
           <div><label className="f">Дата</label><input type="date" value={form.received_at} onChange={e => setForm({ ...form, received_at: e.target.value })} /></div>
           <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={add} disabled={!form.material || !form.qty}>Принять</button></div>
         </div>
+        {materials.length === 0 && <p className="neg">Материалов пока нет — сначала заведите ткань во вкладке «Материалы», потом принимайте партии.</p>}
         <p className="muted">Деньги за ткань пишутся расходом в договор, под который её купили. Здесь — сколько пришло на склад.</p>
       </div>
       <div className="card" style={{ padding: 0 }}>
@@ -211,6 +216,7 @@ function Issues({ materials, orders, reload }) {
           <div><label className="f">Примечание</label><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
           <div style={{ alignSelf: 'flex-end' }}><button className="btn" onClick={add} disabled={!form.material || !form.qty}>Провести</button></div>
         </div>
+        {materials.length === 0 && <p className="neg">Материалов пока нет — заведите их во вкладке «Материалы» и оприходуйте во вкладке «Приход».</p>}
         {mat && <p className="muted">На складе {fmtD(mat.stock)} {mat.unit}.</p>}
       </div>
       <div className="card" style={{ padding: 0 }}>

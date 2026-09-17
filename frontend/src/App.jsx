@@ -120,7 +120,7 @@ export default function App() {
         <Route path="/warehouse" element={<Warehouse user={user} />} />
         <Route path="/finance" element={<Finance user={user} />} />
         <Route path="/analytics" element={<Analytics user={user} />} />
-        <Route path="/chat" element={<Chat />} />
+        <Route path="/chat" element={<Chat user={user} />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/login" element={<Navigate to="/" />} />
         <Route path="*" element={<Home user={user} />} />

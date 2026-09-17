@@ -16,9 +16,18 @@ SYSTEM_PROMPT = """Ты — AI-ассистент ERP-системы швейн�
 - Формат — краткий, деловой; таблицы в markdown при необходимости."""
 
 
+NOT_CONNECTED = ("AI-ассистент не подключён: на сервере нет ключа Anthropic. "
+                 "Обратитесь к администратору системы.")
+
+
+def ai_error(err):
+    # «не подключён» — не временный сбой: 501, чтобы интерфейс не повторял запрос
+    return Response({"detail": err}, status=501 if err == NOT_CONNECTED else 502)
+
+
 def _call_claude(messages, system):
     if not settings.ANTHROPIC_API_KEY:
-        return None, "ANTHROPIC_API_KEY не задан. Добавьте ключ в переменные окружения."
+        return None, NOT_CONNECTED
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={
@@ -48,11 +57,11 @@ def chat(request):
     body: { "messages": [{role, content}, ...] } — история диалога."""
     messages = request.data.get("messages") or []
     if not messages:
-        return Response({"detail": "messages пуст"}, status=400)
+        return Response({"detail": "Напишите вопрос."}, status=400)
     system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context(request.user) + "\n</database_snapshot>"
     text, err = _call_claude(messages, system)
     if err:
-        return Response({"detail": err}, status=502)
+        return ai_error(err)
     return Response({"reply": text})
 
 
@@ -63,14 +72,14 @@ def tender_proposal(request):
     body: { "description": "..." }"""
     desc = request.data.get("description", "").strip()
     if not desc:
-        return Response({"detail": "description пуст"}, status=400)
+        return Response({"detail": "Опишите лот тендера."}, status=400)
     system = SYSTEM_PROMPT + "\n\n<database_snapshot>\n" + build_db_context(request.user) + "\n</database_snapshot>"
     prompt = (f"Подготовь проект ценового предложения для тендера.\nОписание лота: {desc}\n\n"
               "1) Найди 2–3 похожих изделия/договора из базы и укажи их цены.\n"
-              "2) Рассчитай себестоимость по BOM (материалы + труд + накладные).\n"
+              "2) Оцени себестоимость по расходам похожих договоров: ткань, фурнитура, пошив, доставка.\n"
               "3) Предложи цену за единицу и общую сумму с маржой, дай диапазон (мин/рекоменд/макс).\n"
               "4) Короткий текст предложения для заказчика.")
     text, err = _call_claude([{"role": "user", "content": prompt}], system)
     if err:
-        return Response({"detail": err}, status=502)
+        return ai_error(err)
     return Response({"reply": text})

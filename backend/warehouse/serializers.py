@@ -2,6 +2,12 @@ from rest_framework import serializers
 from .models import Supplier, Material, MaterialBatch, StockMovement, GoodsMovement
 
 
+def _n(v):
+    """Число для сообщения человеку: 70.000 → 70, 12.500 → 12.5."""
+    s = format(v, "f")
+    return s.rstrip("0").rstrip(".") if "." in s else s
+
+
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
@@ -55,8 +61,8 @@ class StockMovementSerializer(serializers.ModelSerializer):
         material = attrs["material"]
         if qty < 0 and material.stock + qty < 0:
             raise serializers.ValidationError(
-                {"qty": f"На складе {material.stock} {material.unit} «{material.name}», "
-                        f"выдать {abs(qty)} нельзя."})
+                {"qty": f"На складе {_n(material.stock)} {material.unit} «{material.name}», "
+                        f"выдать {_n(abs(qty))} нельзя."})
         return attrs
 
 

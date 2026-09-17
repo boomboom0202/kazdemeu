@@ -5,7 +5,7 @@ import ExpenseImport from '../components/ExpenseImport'
 
 // Реестр как в «Договора.xlsx»: одна строка — одна позиция закупки
 const EMPTY = {
-  purchase_no: '', company_name: '', platform: '', customer: '', title: '',
+  purchase_no: '', company_name: '', platform: '', customer_name: '', title: '',
   qty: '', price: '', amount: '', contract_no: '', signed_date: '', deadline: '',
   planned_execution: '', delivery_place: '', delivery_terms: '', phone: '', investor: '',
   costs_note: '', payment_note: '', comment: '', note: '', specification: '',
@@ -48,7 +48,8 @@ export default function Contracts({ user }) {
   const loadCustomers = () => api.get('/customers/?page_size=2000').then(r => setCustomers(r.data.results || []))
   useEffect(() => {
     loadCustomers()
-    api.get('/own-companies/?page_size=200').then(r => setCompanies(r.data.results || [])).catch(() => {})
+    if (can(user, 'tenders.companies'))
+      api.get('/own-companies/?page_size=200').then(r => setCompanies(r.data.results || [])).catch(() => {})
   }, [])
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -58,9 +59,10 @@ export default function Contracts({ user }) {
     let amount = form.amount
     if (amount === '' && qty !== null && price !== null) amount = Number(qty) * Number(price)
     try {
-      const { company_name, ...rest } = form
+      const { company_name, customer_name, ...rest } = form
       const { data } = await api.post('/contracts/', {
         ...rest, number: form.purchase_no, qty, price, amount: amount === '' ? 0 : amount,
+        customer: await pickOrCreate(customer_name, customers, '/customers/', setCustomers),
         own_company: await pickOrCreate(company_name, companies, '/own-companies/', setCompanies),
         deadline: orNull(form.deadline), signed_date: orNull(form.signed_date),
       })
@@ -74,7 +76,7 @@ export default function Contracts({ user }) {
       if (editCustId) { await api.patch(`/customers/${editCustId}/`, custForm); resetCust(); await loadCustomers() }
       else {
         const { data } = await api.post('/customers/', custForm)
-        resetCust(); await loadCustomers(); setForm(f => ({ ...f, customer: data.id }))
+        resetCust(); await loadCustomers(); setForm(f => ({ ...f, customer_name: data.name }))
       }
     } catch (e) { alert(apiError(e)) }
   }
@@ -167,9 +169,9 @@ export default function Contracts({ user }) {
               <datalist id="contract-companies">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist></div>
             <div><label className="f">Площадка</label><input value={form.platform} onChange={set('platform')} /></div>
             <div><label className="f">Организация</label>
-              <select value={form.customer} onChange={set('customer')}>
-                <option value="">— выбрать —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
+              <input list="contract-customers" value={form.customer_name} placeholder="заказчик — выбрать или вписать"
+                onChange={set('customer_name')} />
+              <datalist id="contract-customers">{customers.map(c => <option key={c.id} value={c.name} />)}</datalist></div>
           </div>
           <div className="formrow">
             <div style={{ flex: 3 }}><label className="f">Предмет закупки</label><input value={form.title} onChange={set('title')} /></div>
@@ -185,7 +187,7 @@ export default function Contracts({ user }) {
             <div style={{ flex: 2 }}><label className="f">Место поставки</label><input value={form.delivery_place} onChange={set('delivery_place')} /></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={create} disabled={!form.purchase_no || !form.customer || !form.title}>Создать и открыть</button>
+            <button className="btn" onClick={create} disabled={!form.purchase_no || !form.customer_name.trim() || !form.title}>Создать и открыть</button>
             <button className="btn ghost" onClick={() => { setShowForm(false); setForm(EMPTY) }}>Отмена</button>
           </div>
         </div>
