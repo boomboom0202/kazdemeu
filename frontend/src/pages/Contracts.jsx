@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, fmt, money, CONTRACT_STATUS, can, canEdit, apiError, download } from '../api'
+import { api, fmt, money, CONTRACT_STATUS, can, canEdit, apiError, download, pickOrCreate } from '../api'
 import ExpenseImport from '../components/ExpenseImport'
 
 // Реестр как в «Договора.xlsx»: одна строка — одна позиция закупки
 const EMPTY = {
-  purchase_no: '', own_company: '', platform: '', customer: '', title: '',
+  purchase_no: '', company_name: '', platform: '', customer: '', title: '',
   qty: '', price: '', amount: '', contract_no: '', signed_date: '', deadline: '',
   planned_execution: '', delivery_place: '', delivery_terms: '', phone: '', investor: '',
   costs_note: '', payment_note: '', comment: '', note: '', specification: '',
@@ -58,9 +58,11 @@ export default function Contracts({ user }) {
     let amount = form.amount
     if (amount === '' && qty !== null && price !== null) amount = Number(qty) * Number(price)
     try {
+      const { company_name, ...rest } = form
       const { data } = await api.post('/contracts/', {
-        ...form, number: form.purchase_no, qty, price, amount: amount === '' ? 0 : amount,
-        own_company: orNull(form.own_company), deadline: orNull(form.deadline), signed_date: orNull(form.signed_date),
+        ...rest, number: form.purchase_no, qty, price, amount: amount === '' ? 0 : amount,
+        own_company: await pickOrCreate(company_name, companies, '/own-companies/', setCompanies),
+        deadline: orNull(form.deadline), signed_date: orNull(form.signed_date),
       })
       navigate(`/contracts/${data.id}`)
     } catch (e) { alert(apiError(e)) }
@@ -161,9 +163,8 @@ export default function Contracts({ user }) {
           <div className="formrow">
             <div><label className="f">Номер закупки</label><input value={form.purchase_no} onChange={set('purchase_no')} /></div>
             <div><label className="f">С какой фирмы</label>
-              <select value={form.own_company} onChange={set('own_company')}>
-                <option value="">—</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
+              <input list="contract-companies" value={form.company_name} placeholder="ваше ТОО" onChange={set('company_name')} />
+              <datalist id="contract-companies">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist></div>
             <div><label className="f">Площадка</label><input value={form.platform} onChange={set('platform')} /></div>
             <div><label className="f">Организация</label>
               <select value={form.customer} onChange={set('customer')}>

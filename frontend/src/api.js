@@ -150,3 +150,18 @@ export async function download(url, filename) {
   a.href = href; a.download = filename; a.click()
   setTimeout(() => URL.revokeObjectURL(href), 1000)
 }
+
+/**
+ * Справочник «выбрать или вписать»: площадка, своя фирма. Название ищется
+ * в списке без учёта регистра; нет такого — заводится и добавляется в список.
+ * Возвращает id или null, если поле пустое.
+ */
+export async function pickOrCreate(name, list, url, setList) {
+  const n = (name || '').trim()
+  if (!n) return null
+  const found = list.find(x => x.name.toLowerCase() === n.toLowerCase())
+  if (found) return found.id
+  const { data } = await api.post(url, { name: n })
+  setList(l => [...l, data])
+  return data.id
+}

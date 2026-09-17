@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, fmt, canEdit, apiError, can, download } from '../api'
+import { api, fmt, canEdit, apiError, can, download, pickOrCreate } from '../api'
 import { Link, useNavigate } from 'react-router-dom'
 
 export const TENDER_STATUS = {
@@ -12,7 +12,7 @@ export const TENDER_STATUS = {
 }
 
 const EMPTY = {
-  platform: '', own_company: '', purchase_no: '', lot_no: '', customer_name: '', item_name: '',
+  platform_name: '', company_name: '', purchase_no: '', lot_no: '', customer_name: '', item_name: '',
   qty: '', price: '', plan_price: '', cost_per_unit: '', deadline: '',
   delivery_days: '', note: '',
 }
@@ -47,9 +47,17 @@ export default function Tenders({ user }) {
 
   const reset = () => { setShowForm(false); setEditId(null); setForm(EMPTY) }
   const save = async () => {
-    const body = Object.fromEntries(Object.entries(form).map(([k, v]) =>
-      [k, ['platform', 'own_company', 'deadline'].includes(k) ? (v || null) : v]))
     try {
+      // площадку и фирму выбирают из списка или вписывают новые — они заводятся сами
+      const { platform_name, company_name, ...rest } = form
+      const body = {
+        ...rest, deadline: rest.deadline || null,
+        platform: await pickOrCreate(platform_name, platforms, '/platforms/', setPlatforms),
+        own_company: await pickOrCreate(company_name, companies, '/own-companies/', setCompanies),
+      }
+      // цену и количество в плане закупок часто ещё не знают — пустое поле значит ноль
+      for (const k of ['qty', 'price', 'plan_price', 'cost_per_unit'])
+        if (body[k] === '' || body[k] === null || body[k] === undefined) body[k] = 0
       if (editId) await api.patch(`/tenders/${editId}/`, body)
       else await api.post('/tenders/', body)
       reset(); load()
@@ -58,7 +66,7 @@ export default function Tenders({ user }) {
   const edit = (t) => {
     setEditId(t.id); setShowForm(true)
     setForm({
-      platform: t.platform || '', own_company: t.own_company || '', purchase_no: t.purchase_no,
+      platform_name: t.platform_name || '', company_name: t.own_company_name || '', purchase_no: t.purchase_no,
       lot_no: t.lot_no, customer_name: t.customer_name, item_name: t.item_name,
       qty: t.qty, price: t.price, plan_price: t.plan_price,
       cost_per_unit: t.cost_per_unit, deadline: t.deadline || '',
@@ -138,15 +146,15 @@ export default function Tenders({ user }) {
           <h2>{editId ? 'Редактирование лота' : 'Новый лот'}</h2>
           <div className="formrow">
             <div><label className="f">Площадка</label>
-              <select value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value })}>
-                <option value="">—</option>{platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select></div>
+              <input list="tender-platforms" value={form.platform_name} placeholder="госзакуп, Самрук-Казына…"
+                onChange={e => setForm({ ...form, platform_name: e.target.value })} />
+              <datalist id="tender-platforms">{platforms.map(p => <option key={p.id} value={p.name} />)}</datalist></div>
             <div><label className="f">Номер закупки</label><input value={form.purchase_no} onChange={e => setForm({ ...form, purchase_no: e.target.value })} /></div>
             <div><label className="f">Номер лота</label><input value={form.lot_no} onChange={e => setForm({ ...form, lot_no: e.target.value })} /></div>
             <div><label className="f">От какой фирмы</label>
-              <select value={form.own_company} onChange={e => setForm({ ...form, own_company: e.target.value })}>
-                <option value="">—</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
+              <input list="tender-companies" value={form.company_name} placeholder="ваше ТОО"
+                onChange={e => setForm({ ...form, company_name: e.target.value })} />
+              <datalist id="tender-companies">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist></div>
           </div>
           <div className="formrow">
             <div style={{ flex: 2 }}><label className="f">Организация-заказчик</label><input value={form.customer_name} onChange={e => setForm({ ...form, customer_name: e.target.value })} /></div>
