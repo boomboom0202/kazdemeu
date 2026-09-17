@@ -41,7 +41,8 @@ export default function OrderCard({ user, onChange }) {
     <div>
       <div className="pagehead">
         <div>
-          <Link to="/workshop" className="muted">← Заказы цеха</Link>
+          <Link to={`/workshop/contracts/${o.contract || 'none'}`} className="muted">
+            ← {o.contract ? `Договор ${o.contract_number}` : 'Без договора'}</Link>
           <h1>{o.product}</h1>
           <div className="muted">
             {o.contract && (can(user, 'contracts.contracts')
@@ -80,7 +81,7 @@ export default function OrderCard({ user, onChange }) {
             <th>Размер</th><th className="num">План</th>
             {o.stages.map(st => (
               <th key={st.id} className="num">{seeEntries
-                ? <Link to={`/workshop/stages/${st.template}?order=${o.id}`}>{st.name}</Link> : st.name}</th>
+                ? <Link to={`/workshop/contracts/${o.contract || 'none'}/stages/${st.template}?order=${o.id}`}>{st.name}</Link> : st.name}</th>
             ))}
             <th className="num">Осталось</th>
           </tr></thead>

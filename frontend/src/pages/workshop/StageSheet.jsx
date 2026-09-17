@@ -14,14 +14,16 @@ const pct = (v) => (v >= 1 ? 'на упаковке' : `${Math.round(v * 100)}%`
  * Пошив (Тигин): кто шьёт, изделие, размер, выдано и готовность по датам колонками.
  * Сверху — что по каждому заказу можно взять в работу на этом этапе.
  */
-export default function StageSheet({ user, onChange }) {
-  const { id } = useParams()
+export default function StageSheet({ user, onChange, contract, defaultStatus = 'in_work' }) {
+  // лист открывают из папки договора (tid) — тогда в нём только заказы этого договора
+  const { id: routeId, tid } = useParams()
+  const id = tid || routeId
   const [params, setParams] = useSearchParams()
   const mayWrite = canEdit(user, 'workshop.entries')
   const [data, setData] = useState(null)
   const [failed, setFailed] = useState(false)
   const [people, setPeople] = useState([])
-  const status = params.get('status') || 'in_work'
+  const status = params.get('status') || defaultStatus
   const orderFilter = params.get('order') || ''
   const [dates, setDates] = useState({ from: '', to: '' })
   const [showFree, setShowFree] = useState(true)
@@ -36,11 +38,12 @@ export default function StageSheet({ user, onChange }) {
     setFailed(false)
     const p = new URLSearchParams({ status: status === 'all' ? 'all' : status })
     if (orderFilter) p.set('order', orderFilter)
+    if (contract) p.set('contract', contract)
     if (dates.from) p.set('date_from', dates.from)
     if (dates.to) p.set('date_to', dates.to)
     return api.get(`/stage-templates/${id}/sheet/?${p}`).then(r => setData(r.data)).catch(() => setFailed(true))
   }
-  useEffect(() => { setData(null); load() }, [id, status, orderFilter, dates.from, dates.to])
+  useEffect(() => { setData(null); load() }, [id, contract, status, orderFilter, dates.from, dates.to])
   useEffect(() => { setForm(f => ({ ...f, order: orderFilter, size: '' })) }, [orderFilter, id])
   useEffect(() => {
     // ответственный — сотрудник системы; кого он поставил на работу, пишут строкой ниже
@@ -89,7 +92,7 @@ export default function StageSheet({ user, onChange }) {
           <div className="muted">{t.kind_display}</div>
         </div>
         <div className="toolbar" style={{ padding: 0, border: 'none' }}>
-          <select value={status} onChange={e => setParam('status', e.target.value === 'in_work' ? '' : e.target.value)} style={{ width: 'auto' }}>
+          <select value={status} onChange={e => setParam('status', e.target.value === defaultStatus ? '' : e.target.value)} style={{ width: 'auto' }}>
             <option value="in_work">Заказы в работе</option>
             <option value="done">Сданные</option>
             <option value="all">Все заказы</option>

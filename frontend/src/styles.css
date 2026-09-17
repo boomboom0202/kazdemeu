@@ -409,3 +409,8 @@ table.sheet .wide { min-width: 240px; }
 table.mini { min-width: 0; }
 table.mini th, table.mini td { padding: 4px 8px; }
 .cellin { width: 64px; padding: 4px 6px; text-align: right; }
+
+/* ── Цех по договорам: папка «без договора» и очередь этапа в карточке договора ── */
+.ordercard.nocontract { background: #fafaf7; }
+.ordercard.nocontract .t { color: var(--ink-soft); }
+.chip.wait { background: #fdecdc; color: var(--thread); }

@@ -31,6 +31,27 @@ def _parse_date(value):
         return None
 
 
+def by_contract(qs, value, path=""):
+    """Цех смотрят по договору: contract=<id> — заказы договора, contract=none — без договора."""
+    if value == "none":
+        return qs.filter(**{f"{path}contract__isnull": True})
+    if value and str(value).isdigit():
+        return qs.filter(**{f"{path}contract_id": int(value)})
+    return qs
+
+
+def waiting_by_stage(order):
+    """{id этапа заказа: сколько штук ждёт этапа} — прошли предыдущий, сюда не взяты."""
+    stages = list(order.stages.all())
+    out = {st.id: 0 for st in stages}
+    for size in order.sizes.all():
+        per = size_stage_stats(size, stages)
+        for i, st in enumerate(stages):
+            ready_for = per[stages[i - 1].id]["done"] if i else size.planned
+            out[st.id] += max(ready_for - per[st.id]["assigned"], 0)
+    return out
+
+
 class StageTemplateViewSet(Base):
     access_key = "workshop.stages"
     queryset = StageTemplate.objects.all()
@@ -78,7 +99,9 @@ class StageTemplateViewSet(Base):
         stats = OrderedDict((t.id, {"id": t.id, "name": t.name, "kind": t.kind, "is_active": t.is_active,
                                     "orders": 0, "done": 0, "waiting": 0, "in_work": 0})
                             for t in StageTemplate.objects.all())
-        for order in with_details(WorkOrder.objects.filter(status=WorkOrder.Status.IN_WORK)):
+        orders = by_contract(WorkOrder.objects.filter(status=WorkOrder.Status.IN_WORK),
+                             request.query_params.get("contract"))
+        for order in with_details(orders):
             stages = list(order.stages.all())
             for st in stages:
                 stats[st.template_id]["orders"] += 1
@@ -99,7 +122,8 @@ class StageTemplateViewSet(Base):
         Для кроя и штучных этапов — записи по дням; для пошива — партии бригад
         и готовность по датам колонками. Сверху — заказы, которые проходят этап,
         с тем, сколько по каждому размеру можно взять в работу.
-        Параметры: status (in_work по умолчанию, all), order, date_from, date_to.
+        Параметры: status (in_work по умолчанию, all), order, contract (id или none),
+        date_from, date_to.
         """
         if not can_read(request.user, "workshop.entries"):
             return Response({"detail": "Нет доступа к записям этапов."}, status=403)
@@ -114,6 +138,7 @@ class StageTemplateViewSet(Base):
             orders_qs = orders_qs.filter(status=st_filter)
         if order_id:
             orders_qs = orders_qs.filter(pk=order_id)
+        orders_qs = by_contract(orders_qs, request.query_params.get("contract"))
         orders_qs = with_details(orders_qs.select_related("contract__customer").distinct())
 
         orders, stage_ids = [], []
@@ -186,11 +211,85 @@ class StageTemplateViewSet(Base):
         return Response(data)
 
 
+def _empty_group(c):
+    return {"key": c.id if c else "none", "contract": c.id if c else None,
+            "number": (c.purchase_no or c.number) if c else None,
+            "customer": c.customer.name if c else None, "title": c.title if c else None,
+            "deadline": c.deadline if c else None, "orders": 0, "products": [],
+            "planned": 0, "finished": 0, "left": 0, "late": False, "stages": OrderedDict()}
+
+
 class WorkOrderViewSet(Base):
     access_key = "workshop.orders"
     queryset = with_details(WorkOrder.objects.select_related("contract__customer"))
-    filterset_fields = ["status", "contract"]
+    filterset_fields = ["status"]
     search_fields = ["product", "client", "contract__number", "contract__purchase_no"]
+
+    def get_queryset(self):
+        return by_contract(super().get_queryset(), self.request.query_params.get("contract"))
+
+    @action(detail=False, methods=["get"])
+    def by_contracts(self, request):
+        """Главная цеха: договоры с их заказами — сколько запланировано, как идут
+        этапы и сколько ждёт каждого этапа. Заказы без договора — отдельной папкой.
+        Ниже — договоры в работе, по которым цех ещё не запускали."""
+        from contracts.models import Contract
+        st_filter = request.query_params.get("status", "in_work")
+        qs = WorkOrder.objects.select_related("contract__customer")
+        if st_filter != "all":
+            qs = qs.filter(status=st_filter)
+        order_ids = [t.id for t in StageTemplate.objects.all()]
+
+        groups = OrderedDict()
+        for o in with_details(qs):
+            c = o.contract
+            key = c.id if c else "none"
+            g = groups.get(key)
+            if g is None:
+                g = groups[key] = _empty_group(c)
+            sm = order_summary(o)
+            wait = waiting_by_stage(o)
+            g["orders"] += 1
+            g["products"].append(o.product)
+            for k in ("planned", "finished", "left"):
+                g[k] += sm[k]
+            deadline = o.deadline or (c.deadline if c else None)
+            if (deadline and o.status == WorkOrder.Status.IN_WORK and sm["left"]
+                    and deadline < date_cls.today()):
+                g["late"] = True
+            if not c and deadline and (g["deadline"] is None or deadline < g["deadline"]):
+                g["deadline"] = deadline
+            for st in sm["stages"]:
+                row = g["stages"].setdefault(st["template"], {
+                    "id": st["template"], "template": st["template"], "name": st["name"],
+                    "kind": st["kind"], "done": 0, "assigned": 0, "in_work": 0, "waiting": 0})
+                for k in ("done", "assigned", "in_work"):
+                    row[k] += st[k]
+                row["waiting"] += wait[st["id"]]
+
+        out = []
+        for g in groups.values():
+            g["stages"] = sorted(g["stages"].values(), key=lambda s: order_ids.index(s["template"]))
+            out.append(g)
+        # договоры по сроку, без срока — после них; «без договора» — всегда последней папкой
+        out.sort(key=lambda g: (g["key"] == "none", g["deadline"] is None, g["deadline"] or date_cls.max))
+        if "none" not in groups:
+            empty = _empty_group(None)
+            empty["stages"] = []
+            out.append(empty)
+
+        not_launched = []
+        if can_read(request.user, "contracts.contracts"):
+            active = (Contract.objects
+                      .filter(status__in=[Contract.Status.NEW, Contract.Status.NEGOTIATION,
+                                          Contract.Status.IN_PROGRESS], work_orders__isnull=True)
+                      .select_related("customer").order_by("deadline"))
+            not_launched = [{"contract": c.id, "number": c.purchase_no or c.number,
+                             "customer": c.customer.name, "title": c.title,
+                             "qty": float(c.qty) if c.qty is not None else None,
+                             "deadline": c.deadline, "status_display": c.get_status_display()}
+                            for c in active]
+        return Response({"groups": out, "not_launched": not_launched})
 
     def get_serializer_class(self):
         if self.action in ("retrieve", "sizes_bulk", "set_status", "set_route"):
@@ -281,14 +380,20 @@ class StageEntryViewSet(Base):
                 "responsible": obj.responsible_id, "label": who(obj) or "не указан",
                 "workers": obj.workers, "by_stage": {}, "sewn": 0, "in_work": 0})
 
-        for e in (StageEntry.objects.select_related("responsible", "stage__template")
-                  .filter(stage__order__status=WorkOrder.Status.IN_WORK)):
+        contract = request.query_params.get("contract")
+        entries = by_contract(StageEntry.objects.select_related("responsible", "stage__template"),
+                              contract, "stage__order__")
+        jobs = by_contract(SewingJob.objects.select_related("responsible", "stage__template")
+                           .prefetch_related("progress"), contract, "stage__order__")
+        # по договору — всё, что по нему делали; по всему цеху — только заказы в работе
+        if not contract:
+            entries = entries.filter(stage__order__status=WorkOrder.Status.IN_WORK)
+            jobs = jobs.filter(stage__order__status=WorkOrder.Status.IN_WORK)
+        for e in entries:
             r = row(e)
             name = e.stage.template.name
             r["by_stage"][name] = r["by_stage"].get(name, 0) + e.qty
-        for j in (SewingJob.objects.select_related("responsible", "stage__template")
-                  .prefetch_related("progress")
-                  .filter(stage__order__status=WorkOrder.Status.IN_WORK)):
+        for j in jobs:
             r = row(j)
             sewn = job_sewn(j)
             r["sewn"] += sewn

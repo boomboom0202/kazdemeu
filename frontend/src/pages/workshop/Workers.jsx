@@ -3,19 +3,21 @@ import { api, fmt } from '../../api'
 import { Loader, LoadError } from '../../components/Loader'
 
 /**
- * Кто сколько сделал по заказам в работе. Строка — ответственный сотрудник
+ * Кто сколько сделал: по всему цеху — по заказам в работе, в папке договора —
+ * всё, что по нему делали. Строка — ответственный сотрудник
  * и те, кого он вписал в записи («Наср + 9»): у бригад своих учётных
  * записей нет, поэтому их пишут руками в листе этапа.
  */
-export default function Workers() {
+export default function Workers({ contract }) {
   const [rows, setRows] = useState(null)
   const [failed, setFailed] = useState(false)
 
   const load = () => {
     setFailed(false)
-    api.get('/stage-entries/workers/').then(r => setRows(r.data)).catch(() => setFailed(true))
+    api.get('/stage-entries/workers/' + (contract ? `?contract=${contract}` : ''))
+      .then(r => setRows(r.data)).catch(() => setFailed(true))
   }
-  useEffect(load, [])
+  useEffect(load, [contract])
 
   if (failed) return <LoadError onRetry={load} />
   if (!rows) return <Loader />
@@ -26,7 +28,7 @@ export default function Workers() {
   return (
     <div className="card" style={{ padding: 0 }}>
       <div className="toolbar"><b>Кто сколько сделал</b>
-        <span className="muted">по заказам в работе; ответственный — из сотрудников, рядом — кого он вписал</span></div>
+        <span className="muted">{contract ? 'по этому договору' : 'по заказам в работе'}; ответственный — из сотрудников, рядом — кого он вписал</span></div>
       <div className="tablewrap"><table className="sheet">
         <thead><tr>
           <th>Ответственный · кто делал</th>
@@ -35,7 +37,7 @@ export default function Workers() {
         </tr></thead>
         <tbody>
           {rows.length === 0 && <tr><td colSpan={stages.length + 3} className="muted">
-            Записей по заказам в работе пока нет.</td></tr>}
+            {contract ? 'По договору ещё ничего не записано.' : 'Записей по заказам в работе пока нет.'}</td></tr>}
           {rows.map((r, i) => {
             const by = Object.fromEntries(r.by_stage.map(s => [s.name, s.qty]))
             return (

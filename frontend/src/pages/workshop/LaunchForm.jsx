@@ -7,7 +7,7 @@ import SizesInput from '../../components/SizesInput'
  * Из договора подставляются предмет, срок и количество — чтобы сверить,
  * что сетка размеров сходится с договором.
  */
-export default function LaunchForm({ user, contract, onDone, onCancel }) {
+export default function LaunchForm({ user, contract, noContract, onDone, onCancel }) {
   const [templates, setTemplates] = useState([])
   const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({
@@ -24,7 +24,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
       setTemplates(list)
       setChosen(list.filter(t => t.is_active).map(t => t.id))
     })
-    if (!contract && can(user, 'contracts.contracts'))
+    if (!contract && !noContract && can(user, 'contracts.contracts'))
       api.get('/contracts/?page_size=5000&status__in=new,negotiation,in_progress').then(r => setContracts(r.data.results || []))
   }, [])
 
@@ -55,7 +55,7 @@ export default function LaunchForm({ user, contract, onDone, onCancel }) {
       <div className="formrow">
         <div style={{ flex: 2 }}><label className="f">Изделие</label>
           <input value={form.product} placeholder="Куртка АУП" onChange={e => setForm({ ...form, product: e.target.value })} /></div>
-        {!contract && <div style={{ flex: 2 }}><label className="f">Договор</label>
+        {!contract && !noContract && <div style={{ flex: 2 }}><label className="f">Договор</label>
           <select value={form.contract} onChange={e => pickContract(e.target.value)}>
             <option value="">— без договора —</option>
             {contracts.map(c => <option key={c.id} value={c.id}>{c.purchase_no || c.number} · {c.customer_name} · {c.title}</option>)}

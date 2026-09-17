@@ -98,7 +98,10 @@ await part('.card.stitch:has(h2:text-is("Запустить в цех"))', '08-z
 await p.click('button:has-text("Отмена")'); await settle();
 await part('.card:has(.toolbar b:text-is("Заказы цеха по договору"))', '09-ceh-po-dogovoru')
 
-await nav('Цех'); await main('10-ceh-zakazy', 760)
+await nav('Цех'); await main('10-ceh-dogovory', 820)
+// папка договора: изделия, листы этапов и исполнители только по нему
+await p.click('.ordercard:has-text("Куртка АУП")'); await p.waitForSelector('nav.linktabs >> nth=1'); await settle();
+await main('10-ceh-papka-dogovora', 760)
 await p.click('.linktabs a:has-text("Крой")'); await p.waitForSelector('table.sheet'); await settle();
 // форма кроя заполнена: заказ, размер со свободными штуками, штуки и метраж — видна подсказка «можно ещё»
 const pick = async (nth, text) => {
@@ -121,8 +124,9 @@ await p.click('.linktabs a:has-text("Вышивка")'); await p.waitForSelector
 await part('.card:has(.toolbar b:text-is("Записи по дням"))', '14-list-vyshivka', 600)
 await p.click('.linktabs a:has-text("Тигин")'); await p.waitForSelector('table.sheet.grid'); await settle();
 await part('.card:has(table.sheet.grid)', '15-list-tigin', 900)
-await p.click('.linktabs a:has-text("Заказы")'); await settle();
-await p.click('.ordercard:has-text("Костюм МАЭК")'); await p.waitForSelector('table.sheet'); await settle();
+await nav('Цех');
+await p.click('.ordercard:has-text("Костюм МАЭК")'); await p.waitForSelector('nav.linktabs >> nth=1'); await settle();
+await p.click('.card .ordercard >> nth=0'); await p.waitForSelector('table.sheet'); await settle();
 await part('.card:has(h2:text-is("Размер × этап"))', '16-razmer-etap')
 await p.click('table.sheet tbody tr.clickable >> nth=1'); await p.waitForSelector('.drill'); await p.waitForTimeout(300);
 await part('.card:has(h2:text-is("Размер × этап"))', '17-proval-v-razmer', 900)

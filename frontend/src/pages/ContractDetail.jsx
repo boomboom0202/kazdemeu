@@ -232,6 +232,7 @@ function Workshop({ c, user, navigate }) {
       <div className="card" style={{ padding: 0 }}>
         <div className="toolbar">
           <b>Заказы цеха по договору</b>
+          {c.work_orders.length > 0 && <Link to={`/workshop/contracts/${c.id}`} className="muted">открыть в цехе: этапы и исполнители →</Link>}
           {mayLaunch && !show && <button className="btn small orange" style={{ marginLeft: 'auto' }} onClick={() => setShow(true)}>Запустить в цех</button>}
         </div>
         {c.work_orders.length === 0 && <p className="muted" style={{ padding: 16 }}>В цех ещё не запускали. Кнопка «Запустить в цех» создаст заказ: изделие, размеры и этапы.</p>}
